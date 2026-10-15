@@ -1,0 +1,14 @@
+# Normalise line endings on checkin; shell scripts and Makefiles MUST stay LF
+# or they fail on Linux with "bad interpreter: /bin/bash^M".
+* text=auto eol=lf
+
+*.sh    text eol=lf
+Makefile text eol=lf
+*.py    text eol=lf
+
+# Binary assets must never be mangled
+*.png   binary
+*.jpg   binary
+*.gif   binary
+*.svg   text eol=lf
+*.cast  binary

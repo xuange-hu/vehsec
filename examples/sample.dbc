@@ -1,0 +1,27 @@
+VERSION ""
+
+BU_: ECM BCM Cluster TCU
+
+BO_ 256 VehicleSpeed: 8 ECM
+ SG_ Speed : 0|16@1+ (0.1,0) [0|6553.5] "km/h"  Cluster
+ SG_ Odometer : 16|24@1+ (0.1,0) [0|1677721.5] "km"  Cluster
+ SG_ SpeedValid : 40|1@1+ (1,0) [0|1] ""  Cluster
+
+BO_ 260 EngineData: 8 ECM
+ SG_ RPM : 0|16@1+ (0.25,0) [0|16383.75] "rpm"  Cluster
+ SG_ CoolantTemp : 16|8@1+ (1,-40) [-40|215] "degC"  Cluster
+ SG_ Throttle : 24|8@1+ (0.392157,0) [0|100] "%"  Cluster
+ SG_ Torque : 32|16@0- (0.1,0) [-3276.8|3276.7] "Nm"  Cluster
+
+BO_ 512 BodyControl: 4 BCM
+ SG_ Mode M : 0|4@1+ (1,0) [0|15] ""  Cluster
+ SG_ DoorsLocked m0 : 4|1@1+ (1,0) [0|1] ""  Cluster
+ SG_ WiperSpeed m1 : 4|3@1+ (1,0) [0|7] ""  Cluster
+ SG_ Headlights : 8|2@1+ (1,0) [0|3] ""  Cluster
+
+VAL_ 512 Mode 0 "Idle" 1 "Wiper" ;
+VAL_ 512 Headlights 0 "Off" 1 "Parking" 2 "LowBeam" 3 "HighBeam" ;
+
+CM_ BO_ 256 "Broadcast by the ECM every 100 ms.";
+CM_ SG_ 256 Speed "Wheel-speed derived, not GPS.";
+CM_ SG_ 260 Torque "Motorola (big-endian) and signed - exercises the hard path.";

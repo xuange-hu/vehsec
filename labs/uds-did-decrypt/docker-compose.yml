@@ -1,0 +1,5 @@
+services:
+  uds-did-decrypt:
+    build: .
+    image: vehsec-lab-uds-did
+    command: ["python", "solve.py"]

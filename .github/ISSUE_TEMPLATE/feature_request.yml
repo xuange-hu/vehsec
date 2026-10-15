@@ -1,0 +1,44 @@
+name: Feature request
+description: Suggest a capability, service, or lab
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of change?
+      options:
+        - New UDS service (e.g. 3E tester present, 28 comm control, 19 DTC)
+        - New protocol (DoIP, J1939, DBC/signal decoding)
+        - New Seed-Key algorithm
+        - New lab / CTF scenario
+        - CLI / TUI / MCP improvement
+        - Docs
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does it solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed shape
+      description: |
+        Remember: new capabilities should land on all three surfaces —
+        core library, CLI, and MCP server.
+      placeholder: |
+        vehsec uds dtc --read
+        MCP tool: uds_read_dtc(...)
+    validations:
+      required: false
+  - type: checkboxes
+    id: legal
+    attributes:
+      label: Confirmation
+      options:
+        - label: This is for authorized research / education / owned equipment only
+          required: true

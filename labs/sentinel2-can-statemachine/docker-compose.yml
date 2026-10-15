@@ -1,0 +1,5 @@
+services:
+  sentinel2-can:
+    build: .
+    image: vehsec-lab-sentinel2
+    command: ["python", "solve.py"]

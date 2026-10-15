@@ -1,0 +1,5 @@
+services:
+  delta-forge:
+    build: .
+    image: vehsec-lab-delta-forge
+    command: ["python", "solve.py"]

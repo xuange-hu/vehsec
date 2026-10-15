@@ -1,0 +1,5 @@
+services:
+  v2x-ecdsa-nonce:
+    build: .
+    image: vehsec-lab-v2x
+    command: ["python", "solve.py", "--gen", "20", "--reuse"]

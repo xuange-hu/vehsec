@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vehsec"
+version = "0.1.0"
+description = "Vehicle security toolkit: CAN/UDS/Seed-Key/V2X/ICSim as a CLI, TUI and MCP server"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "xuange-hu" }]
+keywords = ["can", "uds", "automotive", "vehicle-security", "car-hacking", "mcp", "v2x", "ecu"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Security",
+    "Intended Audience :: Education",
+]
+dependencies = [
+    "python-can>=4.3",
+    "can-isotp>=1.0",
+    "udsoncan>=1.21",
+    "ecdsa>=0.19",
+]
+
+[project.optional-dependencies]
+cli = ["click>=8.1", "rich>=13.7"]
+tui = ["textual>=0.60"]
+mcp = ["mcp>=1.2,<2"]
+dev = ["pytest>=8.0", "ruff>=0.9", "pre-commit>=4.0"]
+all = ["click>=8.1", "rich>=13.7", "textual>=0.60", "mcp>=1.2,<2"]
+
+[project.scripts]
+vehsec = "vehsec.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/xuange-hu/vehsec"
+Repository = "https://github.com/xuange-hu/vehsec"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# --- tooling --------------------------------------------------------------- #
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# keep the default rule set out of CI: only syntax/undefined-name errors gate merges
+select = ["E9", "F63", "F7", "F82"]

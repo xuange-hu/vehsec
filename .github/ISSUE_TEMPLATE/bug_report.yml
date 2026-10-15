@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in vehsec is broken
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    value: |
+      Please check you are on the latest `main`. For security-sensitive issues
+      (e.g. a flaw that could harm a real vehicle) use
+      [private reporting](../../SECURITY.md) instead.
+  - type: input
+    id: version
+    attributes:
+      label: vehsec version / commit
+      placeholder: "0.1.0 (or commit sha)"
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - CLI
+        - TUI
+        - MCP server
+        - Core library
+        - Lab
+        - Docs
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A repro on the virtual bus is ideal (no hardware needed).
+      placeholder: |
+        1. export VEHSEC_CAN_IFACE=virtual VEHSEC_CAN_CHANNEL=test
+        2. vehsec ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: OS / Python version
+      placeholder: "Windows 11 / Python 3.12"
+    validations:
+      required: true

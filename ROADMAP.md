@@ -1,0 +1,46 @@
+# Roadmap — 目标 1000 star
+
+## v0.1.0 ✅ 已完成（当前）
+- [x] 核心库：CAN 收发/重放/模糊/candump 解析、UDS(isotp+udsoncan)、Seed-Key 注册表、
+      V2X ECDSA nonce 复用恢复、ICSim 控制
+- [x] CLI（click + rich）与 TUI（textual）
+- [x] MCP Server：8 个工具，供 Claude Code / Cursor / Cline 调用
+- [x] `awesome-vehicle-security.md` 精选清单
+- [x] 4 个 Docker CTF Lab，全部通过断言
+- [x] CAN 流量分析 / ID 发现（计数、唯一载荷、变化字节 → 定位控制信号）
+- [x] 脚本化演示 `examples/demo.py`（5 步，可 asciinema/GIF 录屏，无需硬件）
+- [x] 架构图 `docs/architecture.svg` 与发布文案 `docs/promotion.md`
+- [x] 25 个测试 + GitHub Actions CI（3.11/3.12/3.13）
+
+### v0.2.0 进度（2026-10-15）
+- 测试 25 → **80**；MCP 工具 9 → **13**；新增 `doip.py` / `dbc.py` 两个模块。
+- 踩坑记录：DBC 的 Intel 位序必须**反序**成 MSB-first 才能与 Motorola 共用同一套
+  提取循环；`(factor,offset)` 与 `[min|max]` 在真实 DBC 中常省略，正则已改为可选。
+
+## v0.2.0 — 能力纵深（涨星主力）
+- [ ] 更多 UDS 服务：TesterPresent(3E)、CommunicationControl(28)、DTC 读取(19)
+- [x] **DoIP（ISO 13400-2）** `src/vehsec/doip.py`：报文编解码、车辆声明/发现、
+      路由激活、UDS over TCP，**带进程内模拟器**（`vehsec doip simulate` 无需硬件）
+- [x] **DBC 解析与信号级编解码** `src/vehsec/dbc.py`：**纯标准库**（不依赖 canmatrix），
+      支持 Intel/Motorola 字节序、有符号、缩放、VAL_ 枚举、多路复用信号；
+      CLI 与 MCP 均已接入，`examples/sample.dbc` 为示例
+- [ ] J1939 / ISO-TP 多帧与流控可视化
+- [ ] 更多 Seed-Key 算法 + UnlockECU db.json 适配器
+- [ ] CAN 日志可视化（Web 或终端图表）
+
+## v0.3.0 — 演示与传播（决定能否破千）
+- [x] `examples/demo.py` 5 步演示脚本就绪（**待录成 GIF**，用 `asciinema rec -c "python examples/demo.py"`）
+- [x] Linux vcan0 + ICSim + UDSim 一键脚本 `scripts/setup_vcan.sh`
+- [x] 发布文案 `docs/promotion.md`（Show HN / PH / Reddit / X / Awesome PR 现成可发）
+- [ ] 英文 README 与中英分栏
+- [ ] 拆分为三个独立仓库（mcp / toolkit / awesome）分别冲 Trending
+
+## 传播里程碑
+- [ ] 提交到 `awesome-canbus`、`awesome-automotive-security` 等清单
+- [ ] r/CarHacking、Show HN、Product Hunt 发布
+- [ ] X / 掘金 / 知乎 技术串
+- [ ] DEF CON Car Hacking Village 相关社群分享
+
+## 关键指标
+GitHub Trending 按「星增速」加权：24–48 小时内冲 50–200 星即可上榜，上榜后日增
+300–1000。因此发布要集中、演示要可视化、README 要 3 步跑通。
