@@ -14,8 +14,26 @@ from vehsec.cli import cli  # noqa: E402
 def test_help_lists_all_groups():
     r = CliRunner().invoke(cli, ["--help"])
     assert r.exit_code == 0, r.output
-    for group in ("can", "uds", "seedkey", "v2x", "icsim", "mcp", "tui"):
+    for group in ("can", "uds", "seedkey", "v2x", "icsim", "j1939", "mcp", "tui"):
         assert group in r.output, f"missing group {group}"
+
+
+def test_j1939_decode_command():
+    r = CliRunner().invoke(cli, ["j1939", "decode", "--id", "0x18F00400"])
+    assert r.exit_code == 0, r.output
+    assert "0xF004" in r.output and "EEC1" in r.output
+
+
+def test_j1939_encode_command():
+    r = CliRunner().invoke(cli, ["j1939", "encode", "--pgn", "0xF004", "--source", "0"])
+    assert r.exit_code == 0, r.output
+    assert "0x18F00400" in r.output
+
+
+def test_j1939_dm1_command():
+    r = CliRunner().invoke(cli, ["j1939", "dm1", "--data", "0200D2042883"])
+    assert r.exit_code == 0, r.output
+    assert "1234" in r.output
 
 
 def test_seedkey_solve_command():

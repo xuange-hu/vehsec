@@ -83,7 +83,44 @@ d = (s1*k - z1) * r^-1         mod n
 拿到 d 即可伪造任意合法 CAM/DENM，构成中间人链路。防御：强制 RFC 6979
 确定性 nonce。
 
-## 7. 用 AI Agent 驱动（MCP）
+## 7. J1939 商用车侦察（卡车 / 客车 / 农机）
+
+J1939 用 **29 位扩展 ID**，结构为 `优先级(3) | PGN(18) | 源地址(8)`：
+
+```bash
+vehsec j1939 decode --id 0x18F00400                 # -> PGN 0xF004 (EEC1), PDU2 广播
+vehsec j1939 decode --id 0x18F00400 --data FFFFFFFF0010FFFF
+# -> engine_speed_rpm: 512.0
+vehsec j1939 encode --pgn 0xF004 --source 0         # -> 0x18F00400
+vehsec j1939 decode --id 0x18EA00F9                 # PDU1：目标寻址（DA=0x00, SA=0xF9）
+```
+
+**PDU1 vs PDU2（最容易搞错的点）**
+
+| 类型 | PF 范围 | 低字节含义 | 典型用途 |
+|------|---------|-----------|----------|
+| PDU1 | PF < 240 | 目标地址 DA（点对点） | 请求 `0xEA00`、传输协议 `0xEC00`/`0xEB00` |
+| PDU2 | PF ≥ 240 | 组扩展 GE（广播） | EEC1 `0xF004`、CCVS `0xFEF1`、DM1 `0xFECA` |
+
+**故障诊断（DM1 / PGN 65226）**
+
+```bash
+vehsec j1939 dm1 --data 0200D2042883
+# -> red_stop 灯亮，1 个 DTC：SPN=1234, FMI=5, CM=1, OC=3
+```
+
+**NAME 与地址声明（PGN 0xEE00 / 0xE000）**
+
+```bash
+vehsec j1939 name --value 0x0000A00012345678
+```
+
+典型攻击面：
+- **地址声明抢占（address-claim spoofing）**——伪造更高优先级的 NAME 抢占 ECU 地址；
+- **TSC1（PGN 0x0000）扭矩/速度控制注入**——直接向发动机/缓速器下发控制指令；
+- **DM1 篡改**——清除或伪造故障灯状态以掩盖真实故障。
+
+## 8. 用 AI Agent 驱动（MCP）
 
 把 `examples/mcp-config.json` 加入 Agent 的 MCP 配置并信任，然后直接说：
 
@@ -113,3 +150,5 @@ d = (s1*k - z1) * r^-1         mod n
 | Seed-Key 弱算法 | 刷写权限 | 严重 | 非对称认证、算法保密性评估 |
 | V2X nonce 复用 | 消息可信 | 严重 | RFC 6979、HSM 保护私钥 |
 | 仪表盘伪造 | 显示完整性 | 中 | 端到端校验、冗余信号交叉验证 |
+| J1939 地址声明抢占 / TSC1 注入 | 动力与传动控制 | 严重 | 地址声明校验、TSC1 超时机制与源地址白名单 |
+| DoIP 未授权路由激活 | 以太网诊断入口 | 高 | 车辆声明校验、路由激活鉴权、网络分段 |

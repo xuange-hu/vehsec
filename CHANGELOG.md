@@ -22,6 +22,16 @@ All notable changes to `vehsec` are documented here. Format follows
   - CLI: `vehsec dbc info|decode|encode|watch`. MCP: `dbc_decode`, `dbc_info`.
   - `examples/sample.dbc` — a 3-message fixture covering Intel, Motorola, signed,
     scaling, enums and multiplexing.
+- `j1939` — **J1939 heavy-duty protocol (trucks, buses, agriculture), pure stdlib**:
+  - 29-bit identifier decode/encode: priority, PGN, source address; **PDU1**
+    (destination-addressed) vs **PDU2** (broadcast, group extension).
+  - Label lookup for the common PGNs (EEC1, CCVS, DM1/DM2, TSC1, transport, ...).
+  - 64-bit **NAME** decode: identity number, manufacturer code, function,
+    industry group, arbitrary-address-capable.
+  - **DM1** diagnostics: warning-lamp bits plus DTC list (SPN / FMI / CM / OC).
+  - EEC1 engine-speed decoding (0.125 rpm per bit).
+  - CLI: `vehsec j1939 decode|encode|name|dm1`.
+  - MCP: `j1939_decode`, `j1939_encode`, `j1939_decode_name`, `j1939_decode_dm1`.
 - CLI: `doip` and `dbc` command groups; `dbc decode|encode` report bad input as a
   clean click error instead of a traceback.
 - 55 new tests (`tests/test_doip.py`, `tests/test_dbc.py`): 25 → **80 passing**.

@@ -4,7 +4,7 @@
 > 三种入口，让你（或 AI 编程 Agent）直接驱动。**不需要真车。**
 
 [![CI](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml/badge.svg)](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-80%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-100%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-2026%20标准-green.svg)](https://modelcontextprotocol.io)
@@ -63,8 +63,10 @@ Cursor 的 `~/.cursor/mcp.json`，或 Claude Desktop 的 `claude_desktop_config.
 
 > "对虚拟 ECU 跑一次 UDS 安全访问，把 seed 和 key 给我。"
 
-共 13 个工具：`can_send`、`can_fuzz`、`can_analyze`、`uds_security_access`、
-`uds_read_did`、`seedkey_solve`、`v2x_analyze`、`icsim_set_speed`、`icsim_tamper_demo`。
+共 17 个工具：`can_send`、`can_fuzz`、`can_analyze`、`uds_security_access`、
+`uds_read_did`、`seedkey_solve`、`v2x_analyze`、`icsim_set_speed`、`icsim_tamper_demo`、
+`doip_simulate`、`doip_probe`、`dbc_decode`、`dbc_info`、`j1939_decode`、`j1939_encode`、
+`j1939_decode_name`、`j1939_decode_dm1`。
 
 ## 能力一览
 
@@ -75,6 +77,10 @@ Cursor 的 `~/.cursor/mcp.json`，或 Claude Desktop 的 `claude_desktop_config.
 - **Seed-Key 求解**：可插拔算法注册表（含学习用示例算法与 UnlockECU 对接思路）。
 - **V2X / ECDSA**：检测 nonce 复用并**恢复签名私钥**（真实验证过的数学）。
 - **ICSim 控制**：脚本化发送车速 / 车门 / 转向帧，演示仪表盘篡改。
+- **DoIP（ISO 13400）**：进程内虚拟 DoIP 实体，车辆发现、路由激活、以太网 UDS 读 VIN。
+- **DBC 解析**：纯标准库实现，Intel/Motorola 字节序、有符号、缩放、枚举、多路复用。
+- **J1939（商用车）**：29 位 ID ↔ PGN/优先级/源地址（PDU1/PDU2）、NAME 解码、
+  DM1 故障诊断（SPN/FMI/CM/OC）、EEC1 发动机转速。
 - **DoIP（ISO 13400-2）**：以太网诊断——车辆发现、路由激活、UDS over TCP/13400；
   自带**进程内模拟器**，`vehsec doip simulate` 无车无硬件即可跑通全流程。
 - **DBC 解析**：把 `1A4#1A02` 变成 `Speed = 41.5 km/h`。**纯标准库**实现，支持

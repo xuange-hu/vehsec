@@ -17,6 +17,11 @@
 - 踩坑记录：DBC 的 Intel 位序必须**反序**成 MSB-first 才能与 Motorola 共用同一套
   提取循环；`(factor,offset)` 与 `[min|max]` 在真实 DBC 中常省略，正则已改为可选。
 
+### v0.2.0 进度（2026-10-15 夜间）
+- 测试 80 → **100**；MCP 工具 13 → **17**；新增 `j1939.py` 模块（商用车协议）。
+- 踩坑记录：J1939 NAME 的 manufacturer code 只有 **11 位**（上限 0x7FF），
+  测试用例里用了 0xABC 会溢出被静默截断——不是模块 bug，是测试数据错。
+
 ## v0.2.0 — 能力纵深（涨星主力）
 - [ ] 更多 UDS 服务：TesterPresent(3E)、CommunicationControl(28)、DTC 读取(19)
 - [x] **DoIP（ISO 13400-2）** `src/vehsec/doip.py`：报文编解码、车辆声明/发现、
@@ -25,6 +30,11 @@
       支持 Intel/Motorola 字节序、有符号、缩放、VAL_ 枚举、多路复用信号；
       CLI 与 MCP 均已接入，`examples/sample.dbc` 为示例
 - [ ] J1939 / ISO-TP 多帧与流控可视化
+- [x] **J1939 商用车协议** `src/vehsec/j1939.py`：**纯标准库**，29 位 ID ↔
+      PGN/优先级/源地址（PDU1 目标寻址 / PDU2 广播）、常见 PGN 名称表、
+      64 位 NAME 解码、**DM1 故障诊断**（SPN/FMI/CM/OC + 告警灯位）、
+      EEC1 发动机转速换算；CLI `vehsec j1939 decode|encode|name|dm1`
+      与 MCP 4 个工具均已接入
 - [ ] 更多 Seed-Key 算法 + UnlockECU db.json 适配器
 - [ ] CAN 日志可视化（Web 或终端图表）
 

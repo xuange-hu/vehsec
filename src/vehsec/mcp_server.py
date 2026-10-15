@@ -118,6 +118,44 @@ def icsim_tamper_demo(kmh: int = 250, interface: str = "virtual",
 
 
 @mcp.tool()
+def j1939_decode(can_id: str, data_hex: str | None = None) -> str:
+    """Decode a J1939 29-bit CAN identifier (trucks/buses). Optionally decode the
+    payload when the PGN is known (EEC1 engine speed, DM1 diagnostics, requests).
+    can_id like '0x18F00400', data_hex like 'FFFFFFFFFFFFFFFF'."""
+    from .j1939 import decode
+
+    payload = _hex(data_hex) if data_hex else None
+    return json.dumps(decode(int(can_id, 16), payload))
+
+
+@mcp.tool()
+def j1939_encode(pgn: str, source: int = 0, priority: int = 6,
+                 destination: int = 0xFF) -> str:
+    """Build a 29-bit J1939 CAN id from a PGN and source address. pgn like '0xF004'."""
+    from .j1939 import encode_id
+
+    cid = encode_id(int(pgn, 16), source, priority, destination)
+    return json.dumps({"can_id": f"0x{cid:08X}"})
+
+
+@mcp.tool()
+def j1939_decode_name(value: str) -> str:
+    """Decode a 64-bit J1939 NAME (address-claim identity) into its fields."""
+    from .j1939 import decode_name
+
+    return json.dumps(decode_name(int(value, 16)))
+
+
+@mcp.tool()
+def j1939_decode_dm1(data_hex: str) -> str:
+    """Decode a J1939 DM1 message: warning lamps plus the active DTC list
+    (SPN / FMI / CM / OC). data_hex includes lamp status bytes."""
+    from .j1939 import decode_dm1
+
+    return json.dumps(decode_dm1(_hex(data_hex)))
+
+
+@mcp.tool()
 def doip_simulate(vin: str = "WVWZZZ1JZXW000001") -> str:
     """Run an in-process DoIP (ISO 13400) vehicle, discover it, activate routing
     and read the VIN over UDS. No hardware or vehicle needed. Returns the

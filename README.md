@@ -5,7 +5,7 @@
 > **No car required.**
 
 [![CI](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml/badge.svg)](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-80%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-100%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-2026%20standard-green.svg)](https://modelcontextprotocol.io)
@@ -56,9 +56,10 @@ Copy `examples/mcp-config.json` into your agent's MCP config
 
 > "Run a UDS security access on the virtual ECU and show me the seed and key."
 
-Thirteen tools are exposed: `can_send`, `can_fuzz`, `can_analyze`, `uds_security_access`,
+Seventeen tools are exposed: `can_send`, `can_fuzz`, `can_analyze`, `uds_security_access`,
 `uds_read_did`, `seedkey_solve`, `v2x_analyze`, `icsim_set_speed`, `icsim_tamper_demo`,
-`doip_simulate`, `doip_probe`, `dbc_decode`, `dbc_info`.
+`doip_simulate`, `doip_probe`, `dbc_decode`, `dbc_info`, `j1939_decode`, `j1939_encode`,
+`j1939_decode_name`, `j1939_decode_dm1`.
 
 ## Capabilities
 
@@ -70,6 +71,12 @@ Thirteen tools are exposed: `can_send`, `can_fuzz`, `can_analyze`, `uds_security
 - **Seed-Key solver** — pluggable algorithm registry for the UDS 27 handshake.
 - **V2X / ECDSA** — detect nonce reuse and **recover the signer's private key**.
 - **ICSim control** — script speed / doors / turn signals on the virtual cluster.
+- **DoIP (ISO 13400)** — in-process virtual DoIP entity: vehicle discovery, routing
+  activation, and UDS-over-Ethernet (read the VIN) with no hardware.
+- **DBC parsing** — pure stdlib: Intel/Motorola endianness, signed values,
+  factor/offset scaling, value tables, multiplexed signals.
+- **J1939 (trucks/buses)** — 29-bit id ↔ PGN/priority/source (PDU1 & PDU2), NAME
+  decode, DM1 diagnostics (SPN/FMI/CM/OC), EEC1 engine speed.
 - **DoIP (ISO 13400-2)** — diagnostics over Ethernet: vehicle discovery, routing
   activation and UDS over TCP/13400, plus an in-process simulated DoIP entity so you
   can learn the protocol with no vehicle and no hardware.

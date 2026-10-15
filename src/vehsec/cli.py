@@ -397,6 +397,59 @@ def dbc_watch(file, log):
 
 
 # --------------------------------------------------------------------------- #
+# J1939
+# --------------------------------------------------------------------------- #
+@cli.group(help="J1939 (trucks/buses): 29-bit id, NAME, DM1 diagnostics.")
+def j1939():
+    """J1939 heavy-duty protocol helpers."""
+
+
+@j1939.command("decode")
+@click.option("--id", "can_id", required=True, help="29-bit CAN id, e.g. 0x18F00400")
+@click.option("--data", default=None, help="optional hex payload")
+def j1939_decode(can_id, data):
+    """Decode a J1939 identifier (and payload when the PGN is known)."""
+    from .j1939 import decode
+
+    payload = _hex(data) if data else None
+    console.print(decode(int(can_id, 16), payload))
+
+
+@j1939.command("encode")
+@click.option("--pgn", required=True, help="PGN, e.g. 0xF004")
+@click.option("--source", default=0, type=int)
+@click.option("--priority", default=6, type=int)
+@click.option("--dest", default=0xFF, help="destination (PDU1 only)")
+def j1939_encode(pgn, source, priority, dest):
+    """Build a 29-bit J1939 CAN identifier from PGN + source address."""
+    from .j1939 import encode_id
+
+    cid = encode_id(int(pgn, 16), source, priority, dest)
+    console.print(f"[green]0x{cid:08X}[/]")
+
+
+@j1939.command("name")
+@click.option("--value", required=True, help="64-bit NAME, e.g. 0x0000A00012345678")
+def j1939_name(value):
+    """Decode a 64-bit J1939 NAME (address-claim identity)."""
+    from .j1939 import decode_name
+
+    console.print(decode_name(int(value, 16)))
+
+
+@j1939.command("dm1")
+@click.option("--data", required=True, help="DM1 payload hex (lamp status + DTCs)")
+def j1939_dm1(data):
+    """Decode a DM1 message into lamps and SPN/FMI/CM/OC list."""
+    from .j1939 import decode_dm1
+
+    res = decode_dm1(_hex(data))
+    console.print(res)
+    if res["dtc_count"] == 0:
+        console.print("[dim]no active DTCs[/]")
+
+
+# --------------------------------------------------------------------------- #
 # TUI / MCP entry points
 # --------------------------------------------------------------------------- #
 @cli.command()
