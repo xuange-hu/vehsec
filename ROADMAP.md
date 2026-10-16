@@ -57,7 +57,9 @@
 - [ ] CAN 日志可视化（Web 或终端图表）
 
 ## v0.3.0 — 演示与传播（决定能否破千）
-- [x] `examples/demo.py` 5 步演示脚本就绪（**待录成 GIF**，用 `asciinema rec -c "python examples/demo.py"`）
+- [x] **README 顶部演示 GIF**：`examples/make_demo_gif.py` 用 Pillow 离线渲染
+      真实 CLI 输出（无录屏、CI 可复现）→ `docs/demo.gif`；同脚本产出
+      `docs/social-preview.png`（1280×640，Settings → Social preview 上传）
 - [x] Linux vcan0 + ICSim + UDSim 一键脚本 `scripts/setup_vcan.sh`
 - [x] 发布文案 `docs/promotion.md`（Show HN / PH / Reddit / X / Awesome PR 现成可发）
 - [ ] 英文 README 与中英分栏

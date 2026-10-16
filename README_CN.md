@@ -4,12 +4,14 @@
 > 三种入口，让你（或 AI 编程 Agent）直接驱动。**不需要真车。**
 
 [![CI](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml/badge.svg)](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-138%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-2026%20标准-green.svg)](https://modelcontextprotocol.io)
 
 [English README](README.md) · [攻击手册](docs/playbook.md) · [发布文案](docs/promotion.md)
+
+<img src="docs/demo.gif" alt="vehsec 终端演示：CAN ID 发现、Seed-Key 求解、UDS 读 DID、J1939 解码、ICSim 篡改" width="880"/>
 
 ---
 

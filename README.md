@@ -5,12 +5,14 @@
 > **No car required.**
 
 [![CI](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml/badge.svg)](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-138%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-2026%20standard-green.svg)](https://modelcontextprotocol.io)
 
 [中文 README / Chinese version](README_CN.md) · [Attack playbook](docs/playbook.md) · [Launch copy](docs/promotion.md)
+
+<img src="docs/demo.gif" alt="vehsec terminal demo: CAN ID discovery, Seed-Key solve, UDS DID read, J1939 decode, ICSim tamper" width="880"/>
 
 ---
 

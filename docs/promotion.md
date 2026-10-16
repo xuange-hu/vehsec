@@ -13,8 +13,12 @@ Vehicle security toolkit — CAN/UDS/Seed-Key/V2X/ICSim as a CLI, TUI and MCP se
 
 **Topics（GitHub 仓库标签，影响搜索与推荐）**
 ```
-automotive, can-bus, uds, car-hacking, vehicle-security, ecu, v2x, mcp, model-context-protocol, ctf, security-research, iso-21434
+vehicle-security, car-hacking, can-bus, uds, isotp, doip, j1939, v2x, mcp-server, ctf, security-research, iso-21434, ecu, dbc, automotive
 ```
+
+**社交预览图（提高分享点击率，一次性设置）**
+`docs/social-preview.png`（1280×640）已生成 → 仓库 **Settings → General → Social preview**
+手动上传一次即可，之后所有 Tweet/Reddit/IM 分享都会带这张卡片。
 
 **一句话简介（中英通用）**
 > `vehsec` 把散落的车联网安全工具收拢成一套现代工具链：CLI / TUI / MCP 三种入口，
