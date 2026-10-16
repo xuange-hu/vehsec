@@ -118,6 +118,34 @@ def icsim_tamper_demo(kmh: int = 250, interface: str = "virtual",
 
 
 @mcp.tool()
+def isotp_segment(data_hex: str) -> str:
+    """Split a payload into ISO-TP (ISO 15765-2) frames — single frame, or
+    first frame + consecutive frames. Returns the frame list as hex."""
+    from .iso_tp import segment
+
+    frames = segment(_hex(data_hex))
+    return json.dumps({"count": len(frames), "frames": [f.hex().upper() for f in frames]})
+
+
+@mcp.tool()
+def isotp_decode(frame_hex: str) -> str:
+    """Decode one ISO-TP frame into its PCI fields (SF / FF / CF / FC)."""
+    from .iso_tp import decode
+
+    return json.dumps(decode(_hex(frame_hex)), default=lambda b: b.hex())
+
+
+@mcp.tool()
+def isotp_reassemble(frames_hex: str) -> str:
+    """Reassemble a payload from comma-separated ISO-TP frames, validating the
+    consecutive-frame sequence numbers. Returns the payload hex and length."""
+    from .iso_tp import reassemble
+
+    payload = reassemble([_hex(f) for f in frames_hex.split(",")])
+    return json.dumps({"payload": payload.hex().upper(), "length": len(payload)})
+
+
+@mcp.tool()
 def j1939_decode(can_id: str, data_hex: str | None = None) -> str:
     """Decode a J1939 29-bit CAN identifier (trucks/buses). Optionally decode the
     payload when the PGN is known (EEC1 engine speed, DM1 diagnostics, requests).

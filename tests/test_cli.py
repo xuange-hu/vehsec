@@ -14,8 +14,26 @@ from vehsec.cli import cli  # noqa: E402
 def test_help_lists_all_groups():
     r = CliRunner().invoke(cli, ["--help"])
     assert r.exit_code == 0, r.output
-    for group in ("can", "uds", "seedkey", "v2x", "icsim", "j1939", "mcp", "tui"):
+    for group in ("can", "uds", "seedkey", "v2x", "icsim", "j1939", "isotp", "mcp", "tui"):
         assert group in r.output, f"missing group {group}"
+
+
+def test_isotp_segment_and_reassemble_commands():
+    r = CliRunner().invoke(cli, ["isotp", "segment", "--data", "22F190"])
+    assert r.exit_code == 0, r.output
+    assert "0322F190" in r.output
+
+    r = CliRunner().invoke(cli, ["isotp", "decode", "--frame", "0322F190"])
+    assert r.exit_code == 0, r.output
+    assert "SF" in r.output
+
+
+def test_isotp_reassemble_command():
+    # 20-byte payload: FF(total=0x14) + 6 bytes, then CF seq1(7) + CF seq2(7)
+    frames = "1014000102030405,21060708090A0B0C,220D0E0F10111213"
+    r = CliRunner().invoke(cli, ["isotp", "reassemble", "--frames", frames])
+    assert r.exit_code == 0, r.output
+    assert "000102030405060708090a0b0c0d0e0f10111213" in r.output.lower()
 
 
 def test_j1939_decode_command():

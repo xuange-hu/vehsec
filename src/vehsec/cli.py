@@ -450,6 +450,43 @@ def j1939_dm1(data):
 
 
 # --------------------------------------------------------------------------- #
+# ISO-TP
+# --------------------------------------------------------------------------- #
+@cli.group(help="ISO-TP (ISO 15765-2) segmentation: the UDS transport layer.")
+def isotp():
+    """ISO-TP multi-frame helpers."""
+
+
+@isotp.command("segment")
+@click.option("--data", required=True, help="payload hex, e.g. 22F190")
+def isotp_segment(data):
+    """Split a payload into ISO-TP frames (SF, or FF + CFs)."""
+    from .iso_tp import segment
+
+    for i, f in enumerate(segment(_hex(data))):
+        console.print(f"  [{i}] {f.hex().upper()}")
+
+
+@isotp.command("decode")
+@click.option("--frame", required=True, help="one frame hex, e.g. 0322F190")
+def isotp_decode(frame):
+    """Decode a single ISO-TP frame (SF/FF/CF/FC)."""
+    from .iso_tp import decode
+
+    console.print(decode(_hex(frame)))
+
+
+@isotp.command("reassemble")
+@click.option("--frames", required=True, help="comma-separated frame hex list")
+def isotp_reassemble(frames):
+    """Reassemble a payload from ISO-TP frames (validates CF sequence)."""
+    from .iso_tp import reassemble
+
+    payload = reassemble([_hex(f) for f in frames.split(",")])
+    console.print(f"[green]{payload.hex().upper()}[/]  ({len(payload)} bytes)")
+
+
+# --------------------------------------------------------------------------- #
 # TUI / MCP entry points
 # --------------------------------------------------------------------------- #
 @cli.command()

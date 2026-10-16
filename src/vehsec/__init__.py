@@ -14,6 +14,7 @@ from . import icsim
 from . import doip
 from . import dbc
 from . import j1939
+from . import iso_tp
 
 __all__ = [
     "can_bus",
@@ -24,5 +25,6 @@ __all__ = [
     "doip",
     "dbc",
     "j1939",
+    "iso_tp",
     "__version__",
 ]
