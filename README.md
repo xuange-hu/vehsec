@@ -5,7 +5,7 @@
 > **No car required.**
 
 [![CI](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml/badge.svg)](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-120%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-138%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-2026%20standard-green.svg)](https://modelcontextprotocol.io)
@@ -65,7 +65,8 @@ Twenty tools are exposed: `can_send`, `can_fuzz`, `can_analyze`, `uds_security_a
 ## Capabilities
 
 - **UDS diagnostics** — session control, security access (27), DID read/write, routine
-  control, ECU reset, over ISO-TP (`udsoncan` + `can-isotp`).
+  control, ECU reset, over ISO-TP (`udsoncan` + `can-isotp`). Ships with an attached
+  **virtual ECU**, so all of it runs with nothing plugged in.
 - **CAN replay & fuzz** — replay `candump` logs, or mutate frames against a set of IDs.
 - **CAN ID discovery** — per-ID counts, unique payloads, and *which bytes change*, to
   locate the control signal in an unknown vehicle.
@@ -80,11 +81,6 @@ Twenty tools are exposed: `can_send`, `can_fuzz`, `can_analyze`, `uds_security_a
   decode, DM1 diagnostics (SPN/FMI/CM/OC), EEC1 engine speed.
 - **ISO-TP (ISO 15765-2)** — the UDS transport layer, from scratch: SF/FF/CF/FC
   framing, segmentation and reassembly with sequence validation.
-- **DoIP (ISO 13400-2)** — diagnostics over Ethernet: vehicle discovery, routing
-  activation and UDS over TCP/13400, plus an in-process simulated DoIP entity so you
-  can learn the protocol with no vehicle and no hardware.
-- **DBC decoding** — turn `1A4#1A02` into `Speed = 41.5 km/h`. Pure-stdlib DBC parser
-  with Intel *and* Motorola byte order, signed values, scaling and multiplexed signals.
 
 ## Labs — 4 runnable Docker exercises
 
@@ -98,6 +94,30 @@ Twenty tools are exposed: `can_send`, `can_fuzz`, `can_analyze`, `uds_security_a
 ```bash
 python labs/v2x-ecdsa-nonce/solve.py --gen 20 --reuse
 ```
+
+## UDS in 30 seconds — no hardware
+
+Every UDS command talks to an attached **virtual ECU** on a `python-can` virtual
+bus, so the UDS stack (ISO-TP segmentation, flow control, Seed-Key) is exercised
+for real — just without metal.
+
+```console
+$ vehsec uds read --did 0xF190
+{'did': '0xF190',
+ 'value': '5756575a5a5a314a5a5857303030303031',
+ 'ascii': 'WVWZZZ1JZXW000001'}
+
+$ vehsec uds security --level 1 --vendor training_rotate
+{'level': 1, 'seed': '01020304', 'key': '585e5c52', 'unlocked': True}
+
+$ vehsec uds write --did 0xF190 --data 0102030405
+{'did': '0xF190', 'written': 5}
+```
+
+The VIN response is 20 bytes, so it is carried by a first frame plus two
+consecutive frames — you can watch that happen frame by frame with
+`vehsec isotp segment`. Point it at metal or UDSim instead with
+`VEHSEC_CAN_IFACE=socketcan VEHSEC_CAN_CHANNEL=vcan0` plus `auto_ecu=False`.
 
 ## DoIP & DBC in 30 seconds
 

@@ -37,8 +37,59 @@ All notable changes to `vehsec` are documented here. Format follows
 - 55 new tests (`tests/test_doip.py`, `tests/test_dbc.py`): 25 → **80 passing**.
 - MCP tool count 9 → **13**.
 
+- `iso_tp` — **ISO-TP / ISO 15765-2**, the transport layer that carries UDS over CAN,
+  implemented from scratch with no dependencies:
+  - SF/FF/CF/FC framing: SF `0x0|len`, FF `0x1|len_hi,len_lo`, CF `0x2|seq` (wrapping
+    1..15 then 0), FC `0x3|status,BS,STmin`.
+  - `segment()` / `reassemble()` round trip with consecutive-frame sequence validation
+    and truncation to the first-frame declared length; flow-control frames skipped.
+  - `decode()` / `describe()` for reading existing captures (sniffers, `candump` logs,
+    crafted injections).
+  - CLI: `vehsec isotp segment|decode|reassemble`. MCP: `isotp_segment`,
+    `isotp_decode`, `isotp_reassemble`.
+- **`VirtualEcu`** — an in-process UDS ECU answering on a `python-can` virtual bus:
+  - Services 0x10 session, 0x11 reset, 0x22 read DID, 0x2E write DID, 0x27 security
+    access, 0x31 routine control, 0x3E tester present; anything else gets a proper
+    negative response (`0x7F svc 0x11`).
+  - Answers multi-frame too (the 17-byte VIN spans FF + 2 CFs), honouring the
+    receiver's block size and STmin.
+  - Attached automatically on virtual buses, so `vehsec uds read --did 0xF190` works
+    on a clean checkout with nothing plugged in. Use `auto_ecu=False` against metal.
+- 38 new tests this round; MCP tool count 13 → **20** (17 with ISO-TP, 20 with J1939).
+
 ### Fixed
-- Intel (little-endian) signal extraction was mirrored: bit positions were produced
+- **UDS was completely broken against current dependencies** — every `vehsec uds ...`
+  command died on import or on connect. Two upstream renames had landed since the
+  module was written:
+  - `udsoncan` moved `Connection` out of `udsoncan.connection` into
+    `udsoncan.connections` in 1.22 (now `PythonIsoTpConnection`), and both the `Client`
+    class (`udsoncan.client.Client`) and the default config
+    (`configs.default` → `configs.default_client_config`) moved as well. Imports now
+    probe each shape.
+  - `can-isotp` 2.x replaced `TransportLayer(bus, address)` with
+    `TransportLayer(rxfn, txfn, address)`; the bus-carrying constructor is now
+    `CanStack(bus, address=...)`. Since `pyproject.toml` pins only `can-isotp>=1.0`,
+    a fresh install pulled 2.x and broke. Both layouts are now supported.
+  - `CanStack(bus, address)` positionally raises "multiple values for argument
+    'rxfn'" — `*args` are forwarded to the transport layer, so the address must be a
+    keyword argument.
+- Reading a DID that has no `data_identifiers` entry raised `ConfigError`. Rather than
+  forcing callers to declare every DID up front (you usually don't know them before
+  scanning), a pass-through codec is registered under `data_identifiers['default']`,
+  signalling "read the rest of the payload" via `DidCodec.ReadAllRemainingData`.
+- Seed bytes were computed from the raw response payload, which still carries the
+  service/sub-function echo (`01 01 02 03 04` for a seed of `01 02 03 04`), so every
+  derived key was wrong and the ECU answered `0x35 invalidKey`. The key is now derived
+  through udsoncan's own `security_algo` hook, which hands over the parsed seed.
+- Negative responses leaked an opaque third-party exception type; reads now surface a
+  `UdsError` carrying the NRC name.
+- The dependency error told users to `pip install isotp` — that is a *different*
+  distribution. It now says `can-isotp` (which is the one that imports as `isotp`).
+- Stopped tracking `labs/v2x-ecdsa-nonce/signatures.json`: `solve.py --out` rewrites it
+  with fresh random keys on every run, so it only produced perpetual dirty diffs.
+- `tests/test_uds.py` — the UDS module previously had **no** tests, which is how all of
+  the above slipped through. 18 new tests (pure service dispatch + full round trips
+  over the virtual bus). Suite: 120 → **138 passing**.
   LSB-first while the extraction loop expects MSB-first, so every `@1` signal decoded
   bit-reversed. Motorola was unaffected, which is why it hid behind the passing tests.
   Bit positions are now MSB-first for both byte orders.

@@ -22,6 +22,24 @@
 - 踩坑记录：J1939 NAME 的 manufacturer code 只有 **11 位**（上限 0x7FF），
   测试用例里用了 0xABC 会溢出被静默截断——不是模块 bug，是测试数据错。
 
+### v0.2.0 进度（2026-10-16）
+- 测试 100 → **138**；MCP 工具 17 → **20**；新增 `iso_tp.py`（ISO 15765-2）。
+- **UDS 支柱修复**：此前任何 `vehsec uds ...` 命令在当前依赖下都直接崩溃，且该模块
+  从未有测试。两个上游改名同时踩中：
+  * `udsoncan` 1.22 起把 `Connection` 挪到 `udsoncan.connections`，且 `Client` 与默认
+    配置（configs.default → configs.default_client_config）都换了位置；
+  * `can-isotp` 2.x 把 `TransportLayer(bus, address)` 改成回调式，取而代之的是
+    `CanStack(bus, address=...)`（**address 必须关键字传参**，否则撞 `rxfn`）。
+  两条路径现均已做兼容。
+- 新增 `VirtualEcu`：附加在虚拟总线上的进程内 UDS 应答器，支持 0x10/0x11/0x22/0x2E/
+  0x27/0x31/0x3E，未知服务回 `7F xx 11`。至此三大支柱全部"零硬件可跑"。
+- 踩坑记录：
+  * Seed 的响应负载里含子功能回显（`01 01 02 03 04`），手工剥字节会随版本漂移，
+    改用 udsoncan 自己的 `security_algo` 钩子拿解析后的 seed；
+  * 未登记的 DID 读不了（ConfigError），在 `data_identifiers['default']` 挂一个
+    `__len__` 抛 `ReadAllRemainingData` 的透传 codec 即可，不必预先声明每个 DID。
+- 工程进展：仓库已在 GitHub 建立并推送（此前一直是纯本地仓库，从未公开）。
+
 ## v0.2.0 — 能力纵深（涨星主力）
 - [ ] 更多 UDS 服务：TesterPresent(3E)、CommunicationControl(28)、DTC 读取(19)
 - [x] **DoIP（ISO 13400-2）** `src/vehsec/doip.py`：报文编解码、车辆声明/发现、
