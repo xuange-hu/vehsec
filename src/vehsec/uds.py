@@ -43,6 +43,7 @@ DEFAULT_RXID = 0x7E8
 DEFAULT_VIN = b"WVWZZZ1JZXW000001"
 
 _NEGATIVE_SERVICE_NOT_SUPPORTED = 0x11
+_NEGATIVE_SUBFUNCTION_NOT_SUPPORTED = 0x12
 _NEGATIVE_REQUEST_OUT_OF_RANGE = 0x31
 _NEGATIVE_INVALID_KEY = 0x35
 
@@ -151,6 +152,110 @@ def _stmin_seconds(st_min: int) -> float:
 
 
 # --------------------------------------------------------------------------- #
+# diagnostic trouble codes (SAE J2012 / ISO 14229-1)
+# --------------------------------------------------------------------------- #
+#: Bit 7-6 of the DTC high byte select the system the fault belongs to.
+DTC_LETTERS = {0b00: "P", 0b01: "C", 0b10: "B", 0b11: "U"}
+DTC_LETTER_CODES = {v: k for k, v in DTC_LETTERS.items()}
+
+#: statusOfDTC (ISO 14229-1 annex D). Bit 0 is the LSB of the status byte.
+DTC_STATUS_BITS = [
+    (0x01, "testFailed"),
+    (0x02, "testFailedThisOperationCycle"),
+    (0x04, "pendingDTC"),
+    (0x08, "confirmedDTC"),
+    (0x10, "testNotCompletedSinceLastClear"),
+    (0x20, "testFailedSinceLastClear"),
+    (0x40, "testNotCompletedThisOperationCycle"),
+    (0x80, "warningIndicatorRequested"),
+]
+
+#: A short lookup for the codes the virtual ECU reports and a handful of the
+#: ones you meet in the wild. Unknown codes still decode to their identifier.
+DTC_DESCRIPTIONS = {
+    "P0100": "Mass or Volume Air Flow Circuit Malfunction",
+    "P0101": "Mass Air Flow Circuit Range/Performance",
+    "P0300": "Random/Multiple Cylinder Misfire Detected",
+    "P0420": "Catalyst System Efficiency Below Threshold (Bank 1)",
+    "P0562": "System Voltage Low",
+    "U0001": "High Speed CAN Communication Bus",
+    "U0100": "Lost Communication With ECM/PCM 'A'",
+    "U0101": "Lost Communication With TCM",
+    "U0121": "Lost Communication With Anti-Lock Brake System Control Module",
+    "U0140": "Lost Communication With Body Control Module",
+    "C0035": "Left Front Wheel Speed Sensor Circuit",
+    "B0001": "Driver Frontal Airbag Stage 1 Deployment Control",
+}
+
+#: Negative response codes worth naming in error messages.
+NRC_NAMES = {
+    0x10: "generalReject",
+    0x11: "serviceNotSupported",
+    0x12: "subFunctionNotSupported",
+    0x13: "incorrectMessageLengthOrInvalidFormat",
+    0x22: "conditionsNotCorrect",
+    0x24: "requestSequenceError",
+    0x31: "requestOutOfRange",
+    0x33: "securityAccessDenied",
+    0x35: "invalidKey",
+    0x36: "exceededNumberOfAttempts",
+    0x37: "requiredTimeDelayNotExpired",
+    0x78: "requestCorrectlyReceived-ResponsePending",
+    0x7E: "subFunctionNotSupportedInActiveSession",
+    0x7F: "serviceNotSupportedInActiveSession",
+}
+
+#: DTCs the virtual ECU ships with: (high, mid, low, status).
+DEFAULT_DTCS = [
+    (0x01, 0x00, 0x00, 0x2C),   # P0100 — confirmed, failed since last clear
+    (0x04, 0x20, 0x00, 0x0C),   # P0420 — pending + confirmed
+    (0xC1, 0x00, 0x00, 0x08),   # U0100 — confirmed only
+]
+
+
+def decode_dtc(data) -> Dict[str, object]:
+    """Decode a 3-byte UDS DTC into its SAE J2012 identifier.
+
+    ``bytes.fromhex('0100')`` -> ``P0100``: bits 7-6 of the high byte pick the
+    system letter, bits 5-4 and 3-0 are characters 2 and 3, and the middle byte
+    holds characters 4 and 5. The third byte is the failure type (FTB) and is
+    reported separately rather than folded into the code.
+    """
+    raw = bytes(data)[:3]
+    if len(raw) < 3:
+        raise ValueError(f"a DTC needs 3 bytes, got {len(raw)}")
+    high, mid, low = raw
+    letter = DTC_LETTERS[(high >> 6) & 0b11]
+    code = f"{letter}{(high >> 4) & 0b11:X}{high & 0x0F:X}{(mid >> 4) & 0x0F:X}{mid & 0x0F:X}"
+    return {"code": code, "raw": raw.hex().upper(), "failure_type": low,
+            "description": DTC_DESCRIPTIONS.get(code)}
+
+
+def encode_dtc(code: str) -> bytes:
+    """Inverse of :func:`decode_dtc`: ``'P0100'`` -> ``b'\\x01\\x00\\x00'``."""
+    text = str(code).strip().upper()
+    if len(text) != 5 or text[0] not in DTC_LETTER_CODES:
+        raise ValueError(f"'{code}' is not a DTC like P0100 / U0100")
+    letter, digits = text[0], text[1:]
+    try:
+        second, third = int(digits[0], 16), int(digits[1], 16)
+        fourth, fifth = int(digits[2], 16), int(digits[3], 16)
+    except ValueError as exc:
+        raise ValueError(f"'{code}' has non-hex digits") from exc
+    if second > 3:
+        raise ValueError(f"'{code}': the second character must be 0-3, got {second}")
+    high = (DTC_LETTER_CODES[letter] << 6) | (second << 4) | third
+    mid = (fourth << 4) | fifth
+    return bytes([high, mid, 0x00])
+
+
+def decode_dtc_status(status: int) -> list:
+    """Expand a statusOfDTC byte into its flag names."""
+    status &= 0xFF
+    return [name for bit, name in DTC_STATUS_BITS if status & bit]
+
+
+# --------------------------------------------------------------------------- #
 # virtual ECU
 # --------------------------------------------------------------------------- #
 class VirtualEcu(threading.Thread):
@@ -161,9 +266,11 @@ class VirtualEcu(threading.Thread):
     a compact, readable model of what a real ECU does at the UDS layer — which
     is what makes the project usable for learning.
 
-    Supported services: 0x10 session, 0x11 reset, 0x22 read DID, 0x2E write
-    DID, 0x27 security access, 0x31 routine control, 0x3E tester present.
-    Unsupported services get a proper negative response (0x7F svc 0x11).
+    Supported services: 0x10 session, 0x11 reset, 0x14 clear diagnostic
+    information, 0x19 read DTC information, 0x22 read DID, 0x28 communication
+    control, 0x2E write DID, 0x27 security access, 0x31 routine control,
+    0x3E tester present. Unsupported services get a proper negative response
+    (0x7F svc 0x11).
     """
 
     daemon = True
@@ -175,6 +282,7 @@ class VirtualEcu(threading.Thread):
         request_id: int = DEFAULT_TXID,
         response_id: int = DEFAULT_RXID,
         did_data: Optional[Dict[int, bytes]] = None,
+        dtcs: Optional[list] = None,
         seed: bytes = b"\x01\x02\x03\x04",
         key_fn: Optional[Callable[[bytes], bytes]] = None,
         vendor: str = "training_rotate",
@@ -193,6 +301,9 @@ class VirtualEcu(threading.Thread):
         self.did_data.setdefault(0xF190, DEFAULT_VIN)   # VIN
         self.did_data.setdefault(0xF187, b"3Q0907115")  # spare part number
         self.did_data.setdefault(0xF18C, b"SN-0001")    # ECU serial
+        # (high, mid, low, status) — see DEFAULT_DTCS. Mutable so 0x14 can clear.
+        self.dtcs: list = [tuple(d) for d in (dtcs if dtcs is not None else DEFAULT_DTCS)]
+        self.comm_state: Optional[int] = None
         self.unlocked = False
         self.seen: list[bytes] = []
         self._stop = threading.Event()
@@ -316,6 +427,10 @@ class VirtualEcu(threading.Thread):
             return bytes([0x50, sub, 0x00, 0x32, 0x01, 0xF4])
         if svc == 0x11:                             # ECU reset
             return bytes([0x51, sub])
+        if svc == 0x14:                             # clear diagnostic information
+            return self._clear_dtcs(data)
+        if svc == 0x19 and data:                    # read DTC information
+            return self._read_dtc_information(sub, data[1:])
         if svc == 0x22 and len(data) >= 2:          # read data by identifier
             did = int.from_bytes(data[:2], "big")
             value = self.did_data.get(did)
@@ -326,6 +441,9 @@ class VirtualEcu(threading.Thread):
             did = int.from_bytes(data[:2], "big")
             self.did_data[did] = bytes(data[2:])
             return bytes([0x6E]) + data[:2]
+        if svc == 0x28 and data:                    # communication control
+            self.comm_state = sub
+            return bytes([0x68, sub])
         if svc == 0x27 and data:                    # security access
             if sub % 2 == 1:                        # odd sub-function: send seed
                 return bytes([0x67, sub]) + self.seed
@@ -340,6 +458,35 @@ class VirtualEcu(threading.Thread):
         if svc == 0x3E:                             # tester present
             return bytes([0x7E, 0x00])
         return bytes([0x7F, svc, _NEGATIVE_SERVICE_NOT_SUPPORTED])
+
+    # --- DTC sub-services --------------------------------------------------- #
+    def _matching_dtcs(self, mask: int):
+        return [d for d in self.dtcs if (d[3] & mask)]
+
+    def _read_dtc_information(self, sub: int, data: bytes) -> bytes:
+        """Service 0x19. Supported sub-functions: 0x01 count, 0x02 by status
+        mask, 0x0A all supported DTCs."""
+        mask = data[0] if data else 0xFF
+        if sub == 0x01:                             # reportNumberOfDTCByStatusMask
+            count = len(self._matching_dtcs(mask))
+            return bytes([0x59, 0x01, 0x09, 0x00]) + count.to_bytes(2, "big")
+        if sub in (0x02, 0x0A):                     # by status mask / supported
+            records = self._matching_dtcs(mask) if sub == 0x02 else self.dtcs
+            out = bytearray([0x59, sub, 0x09])
+            for high, mid, low, status in records:
+                out += bytes([high, mid, low, status])
+            return bytes(out)
+        return bytes([0x7F, 0x19, _NEGATIVE_SUBFUNCTION_NOT_SUPPORTED])
+
+    def _clear_dtcs(self, data: bytes) -> bytes:
+        """Service 0x14. ``0xFFFFFF`` clears every DTC; any other group clears
+        the codes whose identifier overlaps the mask."""
+        group = int.from_bytes(data[:3].ljust(3, b"\x00"), "big") if data else 0xFFFFFF
+        if group == 0:                              # 0 is not a useful mask
+            group = 0xFFFFFF
+        self.dtcs = [d for d in self.dtcs
+                     if not (int.from_bytes(bytes(d[:3]), "big") & group)]
+        return bytes([0x54])
 
     # --- thread body -------------------------------------------------------- #
     def run(self) -> None:
@@ -520,6 +667,92 @@ class UdsClient:
         with self._client() as c:
             c.routine_control(rid, data)
         return {"routine": f"0x{rid:04X}", "status": "ok"}
+
+    # --- raw escape hatch --------------------------------------------------- #
+    def raw(self, request: bytes, timeout: Optional[float] = None,
+            raise_on_negative: bool = True) -> bytes:
+        """Send an arbitrary UDS payload and return the raw response.
+
+        Everything else in this class goes through ``udsoncan`` helpers, which
+        only exist for the services that library models. Services we add
+        ourselves (0x19/0x14/0x28) and anything vendor-specific go through here,
+        so the payload is sent verbatim and the answer is returned verbatim.
+        """
+        _require()
+        payload = bytes(request)
+        if not payload:
+            raise ValueError("an empty UDS request says nothing")
+        wait = timeout if timeout is not None else self.config["request_timeout"]
+        with Client(self.conn, config=self.config, request_timeout=wait) as c:
+            c.conn.send(payload)
+            response = c.conn.wait_frame(timeout=wait)
+        if response is None:
+            raise UdsError(f"no response to {payload.hex().upper()} "
+                           f"within {wait}s")
+        data = bytes(response)
+        if raise_on_negative and data and data[0] == 0x7F:
+            nrc = data[2] if len(data) > 2 else 0
+            service = data[1] if len(data) > 1 else 0
+            name = NRC_NAMES.get(nrc, f"0x{nrc:02X}")
+            raise UdsError(f"service 0x{service:02X} refused: {name}")
+        return data
+
+    def tester_present(self, sub: int = 0x00):
+        """Tester present (service 0x3E) — keeps the session from timing out."""
+        resp = self.raw(bytes([0x3E, sub & 0xFF]))
+        if not resp or resp[0] != 0x7E:
+            raise UdsError(f"unexpected tester present response: {resp.hex()}")
+        return {"tester_present": True, "response": resp.hex().upper()}
+
+    # --- diagnostic trouble codes ------------------------------------------- #
+    def dtc_count(self, status_mask: int = 0xFF) -> int:
+        """Number of stored DTCs whose status overlaps ``status_mask`` (0x19 01)."""
+        resp = self.raw(bytes([0x19, 0x01, status_mask & 0xFF]))
+        if len(resp) < 6 or resp[0] != 0x59 or resp[1] != 0x01:
+            raise UdsError(f"unexpected DTC count response: {resp.hex().upper()}")
+        return int.from_bytes(resp[4:6], "big")
+
+    def read_dtcs(self, status_mask: int = 0xFF, supported: bool = False) -> list:
+        """Read the DTC list (0x19 02 by status mask, or 0x19 0A for all).
+
+        Returns one dict per record: the J2012 code, its raw bytes, the failure
+        type byte, the status byte and the expanded status flags.
+        """
+        sub = 0x0A if supported else 0x02
+        resp = self.raw(bytes([0x19, sub, status_mask & 0xFF]))
+        if len(resp) < 3 or resp[0] != 0x59 or resp[1] != sub:
+            raise UdsError(f"unexpected DTC list response: {resp.hex().upper()}")
+        body = resp[3:]
+        records = []
+        for offset in range(0, len(body) - 3, 4):
+            entry = body[offset:offset + 4]
+            record = decode_dtc(entry[:3])
+            record["status"] = entry[3]
+            record["status_text"] = decode_dtc_status(entry[3])
+            records.append(record)
+        return records
+
+    def clear_dtcs(self, group: int = 0xFFFFFF):
+        """Clear diagnostic information (service 0x14). Returns what is left."""
+        group &= 0xFFFFFF
+        resp = self.raw(bytes([0x14]) + group.to_bytes(3, "big"))
+        if not resp or resp[0] != 0x54:
+            raise UdsError(f"unexpected clear-DTC response: {resp.hex().upper()}")
+        return {"cleared": True, "group": f"0x{group:06X}",
+                "remaining": len(self.read_dtcs(supported=True))}
+
+    def comm_control(self, sub: int = 0x00, kind: int = 0x01):
+        """Communication control (service 0x28): mute/unmute the ECU's traffic.
+
+        sub: 0x00 enableRxAndTx, 0x01 enableRxAndDisableTx,
+             0x02 disableRxAndEnableTx, 0x03 disableRxAndTx.
+        """
+        resp = self.raw(bytes([0x28, sub & 0xFF, kind & 0xFF]))
+        if not resp or resp[0] != 0x68:
+            raise UdsError(f"unexpected communication control response: "
+                           f"{resp.hex().upper()}")
+        return {"sub_function": sub, "communication_type": kind,
+                "response": resp.hex().upper()}
 
     # --- lifecycle ---------------------------------------------------------- #
     def close(self) -> None:

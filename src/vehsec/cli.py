@@ -151,6 +151,68 @@ def uds_write(did, data):
         console.print(c.write_did(int(did, 16), _hex(data)))
 
 
+@uds.command("dtc")
+@click.option("--status", "status_mask", default="0xFF",
+              help="statusOfDTC mask, e.g. 0x08 for confirmedDTC only")
+@click.option("--all", "show_all", is_flag=True, help="0x19 0A — all supported DTCs")
+@click.option("--count", is_flag=True, help="only report the number of DTCs")
+@click.option("--clear", is_flag=True, help="clear diagnostic information (0x14)")
+def uds_dtc(status_mask, show_all, count, clear):
+    """Read or clear Diagnostic Trouble Codes (UDS 0x19 / 0x14)."""
+    from .uds import UdsClient
+
+    mask = int(status_mask, 16) if str(status_mask).lower().startswith("0x") \
+        else int(status_mask)
+    with UdsClient() as c:
+        if clear:
+            console.print(c.clear_dtcs())
+            return
+        if count:
+            console.print({"count": c.dtc_count(mask), "status_mask": f"0x{mask:02X}"})
+            return
+        records = c.read_dtcs(status_mask=mask, supported=show_all)
+    if not records:
+        console.print("[green]no DTCs stored[/]")
+        return
+    t = Table(title=f"Diagnostic Trouble Codes ({len(records)})")
+    t.add_column("code")
+    t.add_column("raw")
+    t.add_column("status")
+    t.add_column("flags")
+    t.add_column("description")
+    for r in records:
+        t.add_row(r["code"], r["raw"], f"0x{r['status']:02X}",
+                  ",".join(r["status_text"]) or "-", r["description"] or "-")
+    console.print(t)
+
+
+@uds.command("comm")
+@click.option("--sub", default="0x00",
+              help="0 enableRxAndTx, 1 disableTx, 2 disableRx, 3 disableRxAndTx")
+@click.option("--type", "kind", default="0x01", help="communicationType")
+def uds_comm(sub, kind):
+    """Communication control (UDS 0x28) — mute or restore ECU traffic."""
+    from .uds import UdsClient
+
+    with UdsClient() as c:
+        console.print(c.comm_control(int(sub, 16), int(kind, 16)))
+
+
+@uds.command("raw")
+@click.option("--data", required=True, help="raw UDS request hex, e.g. 1902FF")
+def uds_raw(data):
+    """Send an arbitrary UDS request and print the raw response hex."""
+    from .uds import UdsClient
+
+    with UdsClient() as c:
+        response = c.raw(_hex(data), raise_on_negative=False)
+    text = response.hex().upper()
+    if response[:1] == b"\x7f":
+        console.print(f"[yellow]{text}[/] (negative response)")
+    else:
+        console.print(f"[green]{text}[/]")
+
+
 # --------------------------------------------------------------------------- #
 # Seed-Key
 # --------------------------------------------------------------------------- #

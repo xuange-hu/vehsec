@@ -47,21 +47,8 @@ def recover(sig_a, sig_b):
     return d
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--gen", type=int, default=20, help="number of signatures")
-    ap.add_argument("--reuse", action="store_true", help="force a nonce reuse")
-    ap.add_argument("--out", default="signatures.json")
-    args = ap.parse_args()
-
-    priv, sigs = gen_signatures(args.gen, args.reuse)
-    with open(args.out, "w", encoding="utf-8") as fh:
-        json.dump(sigs, fh)
-
-    print(f"[*] generated {len(sigs)} signatures -> {args.out}")
-    print(f"[*] true private key = 0x{priv:X}")
-
-    d = None
+def find_and_recover(sigs):
+    """Group signatures by r: two signatures sharing r share the nonce k."""
     by_r = {}
     for i, sg in enumerate(sigs):
         by_r.setdefault(sg["r"], []).append(i)
@@ -70,19 +57,45 @@ def main():
             for y in range(x + 1, len(idxs)):
                 d = recover(sigs[idxs[x]], sigs[idxs[y]])
                 if d is not None:
-                    break
-            if d is not None:
-                break
-        if d is not None:
-            break
+                    return d, idxs[x], idxs[y]
+    return None, None, None
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--gen", type=int, default=20, help="number of signatures")
+    # --reuse/--no-reuse: reuse is the *default* so the very first run shows the
+    # attack working; --no-reuse is the contrast branch (a correct signer).
+    ap.add_argument("--reuse", action=argparse.BooleanOptionalAction, default=True,
+                    help="inject a nonce reuse (default), or --no-reuse for a "
+                         "clean set that has nothing to exploit")
+    ap.add_argument("--out", default="signatures.json")
+    args = ap.parse_args()
+
+    priv, sigs = gen_signatures(args.gen, args.reuse)
+    with open(args.out, "w", encoding="utf-8") as fh:
+        json.dump(sigs, fh)
+
+    print(f"[*] generated {len(sigs)} signatures -> {args.out}")
+    print(f"[*] nonce reuse injected = {args.reuse}")
+    print(f"[*] true private key = 0x{priv:X}")
+
+    d, i, j = find_and_recover(sigs)
 
     if d is None:
-        print("[!] no nonce reuse found — rerun with --reuse")
+        if args.reuse:                      # we asked for reuse — this is a bug
+            raise AssertionError("nonce reuse was injected but not recovered")
+        print("[-] no nonce reuse found — the private key stays hidden.")
+        print("    This is the contrast branch: RFC 6979 deterministic nonces give")
+        print("    every message its own k, so there is nothing to exploit.")
+        print("    Run without --no-reuse to see the vulnerable implementation.")
         return
+    print(f"[+] signatures #{i} and #{j} share r -> the same nonce k was reused")
     print(f"[+] recovered private key = 0x{d:X}")
     print(f"[+] match = {d == priv}")
     assert d == priv, "recovered key does not match"
     print("[+] OK — private key recovered via nonce reuse")
+    print(f"[+] cross-check with the toolkit: vehsec v2x analyze {args.out}")
 
 
 if __name__ == "__main__":

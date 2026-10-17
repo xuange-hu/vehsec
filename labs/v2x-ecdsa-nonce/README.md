@@ -13,9 +13,12 @@ k**（RFC 6979 未正确使用）。只要收集到两条用了相同 k 的签�
 ## 运行
 ```bash
 docker compose up --build
-# 或： pip install ecdsa && python solve.py --gen 20 --reuse
+# 或： pip install ecdsa && python solve.py --gen 20
 # 用 vehsec 分析： vehsec v2x analyze signatures.json
 ```
+
+默认即注入 nonce 复用，所以**第一次跑就能看到私钥被恢复出来**（下面的对照分支
+`--no-reuse` 演示的是正确实现：每条消息各自的 k，无可利用之处）。
 
 ## 解法要点（真实数学）
 对两条签名 `(r, s1, z1)`、`(r, s2, z2)`（相同 r = 相同 k）：

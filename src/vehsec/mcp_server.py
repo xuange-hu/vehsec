@@ -78,6 +78,60 @@ def uds_read_did(did: str, interface: str = "virtual", channel: str = "test") ->
 
 
 @mcp.tool()
+def uds_read_dtcs(status_mask: str = "0xFF", supported: bool = False,
+                  interface: str = "virtual", channel: str = "test") -> str:
+    """Read UDS Diagnostic Trouble Codes (service 0x19): the J2012 code (e.g.
+    'U0100'), its raw bytes, the status byte and the decoded status flags.
+    status_mask: 0xFF all, 0x08 confirmed, 0x04 pending, 0x01 testFailed.
+    supported=true asks for every supported DTC (sub-function 0x0A)."""
+    from .uds import UdsClient
+
+    mask = int(status_mask, 16)
+    with UdsClient(interface=interface, channel=channel) as c:
+        return json.dumps(c.read_dtcs(status_mask=mask, supported=supported))
+
+
+@mcp.tool()
+def uds_clear_dtcs(group: str = "0xFFFFFF", interface: str = "virtual",
+                   channel: str = "test") -> str:
+    """Clear UDS diagnostic information (service 0x14). group is a 3-byte DTC
+    mask; 0xFFFFFF clears everything. Returns how many DTCs remain."""
+    from .uds import UdsClient
+
+    with UdsClient(interface=interface, channel=channel) as c:
+        return json.dumps(c.clear_dtcs(int(group, 16)))
+
+
+@mcp.tool()
+def uds_decode_dtc(value: str) -> str:
+    """Decode a 3-byte UDS DTC (hex, e.g. 'C10000') into its SAE J2012 code and
+    a short description. Accepts 'U0100' directly too."""
+    from .uds import decode_dtc, encode_dtc
+
+    text = value.strip()
+    raw = encode_dtc(text) if (len(text) == 5 and text[0].upper() in "PCBU") \
+        else _hex(text)
+    return json.dumps(decode_dtc(raw))
+
+
+@mcp.tool()
+def uds_raw(data_hex: str, interface: str = "virtual", channel: str = "test") -> str:
+    """Send an arbitrary raw UDS request (e.g. '1902FF' or '22F190') and return
+    the response hex. Negative responses are returned, not raised, so the caller
+    can read the NRC."""
+    from .uds import NRC_NAMES, UdsClient
+
+    with UdsClient(interface=interface, channel=channel) as c:
+        response = c.raw(_hex(data_hex), raise_on_negative=False)
+    out = {"request": data_hex, "response": response.hex().upper()}
+    if response[:1] == b"\x7f":
+        nrc = response[2] if len(response) > 2 else 0
+        out["negative"] = True
+        out["nrc"] = NRC_NAMES.get(nrc, f"0x{nrc:02X}")
+    return json.dumps(out)
+
+
+@mcp.tool()
 def seedkey_solve(vendor: str, seed_hex: str) -> str:
     """Solve a UDS seed for a registered vendor. Returns the key hex."""
     from . import seedkey as sk

@@ -41,7 +41,12 @@
 - 工程进展：仓库已在 GitHub 建立并推送（此前一直是纯本地仓库，从未公开）。
 
 ## v0.2.0 — 能力纵深（涨星主力）
-- [ ] 更多 UDS 服务：TesterPresent(3E)、CommunicationControl(28)、DTC 读取(19)
+- [x] **DTC 诊断故障码（19/14/28 服务）** `src/vehsec/uds.py`：SAE J2012 三字节
+      编解码（`C10000` ↔ `U0100`）、statusOfDTC 位展开、常见故障码简述表；
+      VirtualEcu 支持 0x19 的 01/02/0A 子功能、0x14 清除（按 group 掩码）、
+      0x28 通信控制；新增 `UdsClient.raw()` 任意请求逃生舱。
+      CLI `vehsec uds dtc|comm|raw`，MCP 新增 4 个工具（20 → 24）
+- [x] TesterPresent(3E) / CommunicationControl(28) / DTC 读取(19) / 清除(14)
 - [x] **DoIP（ISO 13400-2）** `src/vehsec/doip.py`：报文编解码、车辆声明/发现、
       路由激活、UDS over TCP，**带进程内模拟器**（`vehsec doip simulate` 无需硬件）
 - [x] **DBC 解析与信号级编解码** `src/vehsec/dbc.py`：**纯标准库**（不依赖 canmatrix），
@@ -70,6 +75,27 @@
 - [ ] r/CarHacking、Show HN、Product Hunt 发布
 - [ ] X / 掘金 / 知乎 技术串
 - [ ] DEF CON Car Hacking Village 相关社群分享
+
+### v0.2.0 进度（2026-10-17）
+- 测试 140 → **172**；MCP 工具 20 → **24**。
+- **DTC 支柱落地**：故障码是"扫描仪最该有的功能"，也是搜索量最大的 UDS 能力。
+  新增 `decode_dtc`/`encode_dtc`/`decode_dtc_status` 三个纯函数 + NRC 名称表，
+  VirtualEcu 增加 0x19/0x14/0x28 三个服务。
+- **`UdsClient.raw()` 是关键设计决定**：`udsoncan` 只建模了部分服务，0x19 的
+  DTC 解析需要它自己那一套 config。与其和上游 schema 纠缠，不如保留一个
+  "payload 原样进、响应原样出"的通道，我们自己解析——版本漂移风险最小。
+- 三条 DTC 记录 = 15 字节，超过经典 CAN 单帧 7 字节，因此这条响应**真实走
+  首帧 + 连续帧**的多帧流程，顺带把 ISO-TP 路径又压测了一遍。
+- 踩坑记录：
+  * `argparse` **不支持** `--reuse/--no-reuse` 这种 click 风格的斜杠写法，
+    要写成 `action=argparse.BooleanOptionalAction`（Python 3.9+）。
+  * mcp 1.30 的 `list_tools()` 返回 pydantic `Tool`，**没有 `.fn`**；
+    要调用工具得 `await mcp.call_tool(name, args)`，返回
+    `(content_blocks, metadata)`，payload 在 `content[0].text`。
+  * `groupOfDTC`（0x14 服务的 3 字节掩码）是 **AND 非零** 语义，不能用来表达
+    "字母 == P"；测试里要用能真正区分的掩码（如 `0x00FF00` 命中中间字节）。
+- **v2x lab 首跑体验修复**：默认即注入 nonce 复用，新访客第一次跑就能看到
+  私钥被恢复出来；`--no-reuse` 才是对照组。
 
 ## 关键指标
 GitHub Trending 按「星增速」加权：24–48 小时内冲 50–200 星即可上榜，上榜后日增

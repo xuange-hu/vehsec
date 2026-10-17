@@ -6,6 +6,26 @@ All notable changes to `vehsec` are documented here. Format follows
 ## [Unreleased] — v0.2.0
 
 ### Added
+- `uds` — **diagnostic trouble codes (ISO 14229-1 services 0x19 / 0x14 / 0x28)**:
+  - `decode_dtc()` / `encode_dtc()` convert between the 3-byte wire form and the
+    SAE J2012 identifier (`C1 00 00` ↔ `U0100`); bits 7-6 of the high byte pick the
+    system letter (P/C/B/U).
+  - `decode_dtc_status()` expands the statusOfDTC byte into its flags
+    (`confirmedDTC`, `pendingDTC`, `testFailed`, `warningIndicatorRequested`, ...).
+  - `VirtualEcu` now stores DTCs and answers 0x19 sub-functions 0x01 (count),
+    0x02 (by status mask) and 0x0A (supported), plus 0x14 clear (honouring the
+    3-byte group mask) and 0x28 communication control.
+  - `UdsClient.raw()` — an escape hatch that sends an arbitrary UDS payload and
+    returns the response verbatim, so services `udsoncan` does not model (and
+    vendor-specific ones) work without patching the library. Negative responses
+    can be raised as a named `UdsError` or returned for the caller to inspect.
+  - CLI: `vehsec uds dtc [--status|--count|--clear|--all]`, `vehsec uds comm`,
+    `vehsec uds raw`. MCP: `uds_read_dtcs`, `uds_clear_dtcs`, `uds_decode_dtc`,
+    `uds_raw` (24 tools total, up from 20).
+- `labs/v2x-ecdsa-nonce` — **the nonce reuse is now the default**. The lab used to
+  print "rerun with --reuse" and exit, which told a first-time visitor nothing.
+  `--no-reuse` gives the contrast branch (a correct signer has nothing to exploit).
+
 - `doip` — **DoIP / ISO 13400-2**, diagnostics over Ethernet:
   - Wire codec: 8-byte header, vehicle announcement (VIN / EID / GID), routing
     activation request+response, diagnostic-message framing, negative ack handling.

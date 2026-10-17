@@ -5,7 +5,7 @@
 > **No car required.**
 
 [![CI](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml/badge.svg)](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-172%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-2026%20standard-green.svg)](https://modelcontextprotocol.io)
@@ -58,17 +58,19 @@ Copy `examples/mcp-config.json` into your agent's MCP config
 
 > "Run a UDS security access on the virtual ECU and show me the seed and key."
 
-Twenty tools are exposed: `can_send`, `can_fuzz`, `can_analyze`, `uds_security_access`,
-`uds_read_did`, `seedkey_solve`, `v2x_analyze`, `icsim_set_speed`, `icsim_tamper_demo`,
-`doip_simulate`, `doip_probe`, `dbc_decode`, `dbc_info`, `j1939_decode`, `j1939_encode`,
-`j1939_decode_name`, `j1939_decode_dm1`, `isotp_segment`, `isotp_decode`,
-`isotp_reassemble`.
+Twenty-four tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
+`uds_security_access`, `uds_read_did`, `uds_read_dtcs`, `uds_clear_dtcs`,
+`uds_decode_dtc`, `uds_raw`, `seedkey_solve`, `v2x_analyze`, `icsim_set_speed`,
+`icsim_tamper_demo`, `doip_simulate`, `doip_probe`, `dbc_decode`, `dbc_info`,
+`j1939_decode`, `j1939_encode`, `j1939_decode_name`, `j1939_decode_dm1`,
+`isotp_segment`, `isotp_decode`, `isotp_reassemble`.
 
 ## Capabilities
 
 - **UDS diagnostics** — session control, security access (27), DID read/write, routine
-  control, ECU reset, over ISO-TP (`udsoncan` + `can-isotp`). Ships with an attached
-  **virtual ECU**, so all of it runs with nothing plugged in.
+  control, ECU reset, **DTC read/clear (19/14)**, communication control (28), and a
+  **raw request escape hatch**, over ISO-TP (`udsoncan` + `can-isotp`). Ships with an
+  attached **virtual ECU**, so all of it runs with nothing plugged in.
 - **CAN replay & fuzz** — replay `candump` logs, or mutate frames against a set of IDs.
 - **CAN ID discovery** — per-ID counts, unique payloads, and *which bytes change*, to
   locate the control signal in an unknown vehicle.
@@ -83,6 +85,9 @@ Twenty tools are exposed: `can_send`, `can_fuzz`, `can_analyze`, `uds_security_a
   decode, DM1 diagnostics (SPN/FMI/CM/OC), EEC1 engine speed.
 - **ISO-TP (ISO 15765-2)** — the UDS transport layer, from scratch: SF/FF/CF/FC
   framing, segmentation and reassembly with sequence validation.
+- **DTC (diagnostic trouble codes)** — read faults (19 sub 01/02/0A), clear them
+  (14), and decode the 3-byte code into its SAE J2012 identifier (`C10000` →
+  `U0100`) with status flags and a short description.
 
 ## Labs — 4 runnable Docker exercises
 
@@ -94,7 +99,9 @@ Twenty tools are exposed: `can_send`, `can_fuzz`, `can_analyze`, `uds_security_a
 | [`labs/sentinel2-can-statemachine`](labs/sentinel2-can-statemachine) | CAN state-machine injection / missing auth guard |
 
 ```bash
-python labs/v2x-ecdsa-nonce/solve.py --gen 20 --reuse
+python labs/v2x-ecdsa-nonce/solve.py --gen 20   # nonce reuse is the default:
+                                                # the first run recovers the key
+python labs/v2x-ecdsa-nonce/solve.py --gen 20 --no-reuse   # contrast: nothing found
 ```
 
 ## UDS in 30 seconds — no hardware
@@ -115,6 +122,29 @@ $ vehsec uds security --level 1 --vendor training_rotate
 $ vehsec uds write --did 0xF190 --data 0102030405
 {'did': '0xF190', 'written': 5}
 ```
+
+## Diagnostic trouble codes in 30 seconds
+
+```console
+$ vehsec uds dtc                       # read faults (service 0x19 sub-function 02)
+        Diagnostic Trouble Codes (3)
+┌───────┬────────┬─────────┬──────────────────────────┬──────────────────────┐
+│ code  │ raw    │ status  │ flags                    │ description          │
+├───────┼────────┼─────────┼──────────────────────────┼──────────────────────┤
+│ P0100 │ 010000 │ 0x2C    │ pendingDTC,confirmedDTC… │ Mass or Volume Air … │
+│ P0420 │ 042000 │ 0x0C    │ pendingDTC,confirmedDTC  │ Catalyst System Eff… │
+│ U0100 │ C10000 │ 0x08    │ confirmedDTC             │ Lost Communication … │
+└───────┴────────┴─────────┴──────────────────────────┴──────────────────────┘
+
+$ vehsec uds dtc --status 0x08         # confirmed faults only
+$ vehsec uds dtc --count               # just the number stored
+$ vehsec uds dtc --clear               # service 0x14
+$ vehsec uds raw --data 1901FF         # any request, response returned verbatim
+590109000003
+```
+
+Three records are 15 bytes, so this response is carried by a first frame plus
+consecutive frames — the ISO-TP path is the real one, not a stub.
 
 The VIN response is 20 bytes, so it is carried by a first frame plus two
 consecutive frames — you can watch that happen frame by frame with
@@ -147,7 +177,7 @@ vehsec dbc watch   --file examples/sample.dbc --log capture.log   # decode a who
 
 ```bash
 pip install -e ".[all]" && pip install pytest
-pytest -q      # 80 passed: core, CLI, MCP registration, all 4 labs, demo script
+pytest -q      # 172 passed: core, CLI, MCP registration, all 4 labs, demo script
 ```
 
 CI runs ruff + pytest on Python 3.11 / 3.12 / 3.13.
