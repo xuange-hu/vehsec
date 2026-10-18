@@ -6,6 +6,24 @@ All notable changes to `vehsec` are documented here. Format follows
 ## [Unreleased] — v0.2.0
 
 ### Added
+- `seedkey` — **algorithm recovery** (turn captured seed/key pairs into an algorithm):
+  - `recover(pairs)` brute-forces a catalogue of parameterised transform families —
+    `xor c`, `add c`, `sub c`, `xor i ^ c`, `add i + c`, `rotl 1/3 ^ c`,
+    `bitrev ^ c`, `nibble-swap ^ c`, endian-swap, and the affine `a*seed[i]+b` —
+    and returns every candidate consistent with **all** pairs, with a
+    `high`/`medium`/`low` confidence rating (3+ pairs usually collapse to one).
+  - Algorithm factories `algo_xor/add/sub/rotl/rotr/bitreverse/nibble_swap/
+    endian_swap/crc16_xor/lfsr_xor/sha_keystream` + `compose()` for chaining, and
+    10 new registered presets (`demo_*`).
+  - `parse_pairs()` accepts `seed:key,seed:key` hex or a JSON list.
+  - CLI: `vehsec seedkey recover --pairs|--file`, richer `vehsec seedkey vendors`.
+    MCP: `seedkey_recover`, `seedkey_vendors` (27 tools total, up from 24).
+- `iso_tp` — **ASCII visualisation** of a multi-frame transfer:
+  - `explain(frames)` / `explain_payload(data)` render the frame list with PCI,
+    kind (SF/FF/CF/FC), sequence numbers, the payload byte span each frame
+    carries, `--` padding for unused bytes, and the reassembled payload.
+    Incomplete transfers are reported as `INCOMPLETE — got N of M bytes`.
+  - CLI: `vehsec isotp explain --data|--frames`. MCP: `isotp_explain`.
 - `uds` — **diagnostic trouble codes (ISO 14229-1 services 0x19 / 0x14 / 0x28)**:
   - `decode_dtc()` / `encode_dtc()` convert between the 3-byte wire form and the
     SAE J2012 identifier (`C1 00 00` ↔ `U0100`); bits 7-6 of the high byte pick the

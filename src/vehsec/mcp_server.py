@@ -141,6 +141,33 @@ def seedkey_solve(vendor: str, seed_hex: str) -> str:
 
 
 @mcp.tool()
+def seedkey_vendors() -> str:
+    """List registered Seed-Key vendors with an example key for seed 11223344."""
+    from . import seedkey as sk
+
+    out = {}
+    for v in sk.known_vendors():
+        try:
+            out[v] = sk.solve(v, bytes.fromhex("11223344")).hex()
+        except Exception:  # noqa: BLE001 - one bad algorithm must not break listing
+            out[v] = None
+    return json.dumps({"count": len(out), "vendors": out})
+
+
+@mcp.tool()
+def seedkey_recover(pairs: str, max_results: int = 12) -> str:
+    """Recover an unknown UDS seed->key algorithm from observed (seed, key) pairs.
+
+    pairs: 'seed:key' hex pairs separated by commas, e.g.
+    '11223344:4B778899,a5b6c7d8:FFE19D82'. A JSON list of {"seed","key"} objects
+    also works. Returns matching algorithm expressions with a confidence level;
+    3+ pairs usually narrows it to a single answer."""
+    from . import seedkey as sk
+
+    return json.dumps(sk.recover(sk.parse_pairs(pairs), max_results=max_results))
+
+
+@mcp.tool()
 def v2x_analyze(file: str) -> str:
     """Analyze V2X ECDSA signatures (JSON list of {r,s,z}) for nonce reuse.
     Returns recovered private keys."""
@@ -197,6 +224,21 @@ def isotp_reassemble(frames_hex: str) -> str:
 
     payload = reassemble([_hex(f) for f in frames_hex.split(",")])
     return json.dumps({"payload": payload.hex().upper(), "length": len(payload)})
+
+
+@mcp.tool()
+def isotp_explain(data_hex: str = "", frames_hex: str = "") -> str:
+    """Render an ISO-TP transfer as an ASCII diagram showing how the payload is
+    chopped into First Frame + Consecutive Frames, with sequence numbers and the
+    reassembled payload. Pass either data_hex (a payload to segment) or
+    frames_hex (comma-separated captured frames)."""
+    from .iso_tp import explain, explain_payload
+
+    if bool(data_hex) == bool(frames_hex):
+        return json.dumps({"error": "pass exactly one of data_hex or frames_hex"})
+    if data_hex:
+        return explain_payload(_hex(data_hex))
+    return explain([_hex(f) for f in frames_hex.split(",")])
 
 
 @mcp.tool()

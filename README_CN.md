@@ -4,7 +4,7 @@
 > 三种入口，让你（或 AI 编程 Agent）直接驱动。**不需要真车。**
 
 [![CI](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml/badge.svg)](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-172%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-207%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-2026%20标准-green.svg)](https://modelcontextprotocol.io)
@@ -65,11 +65,13 @@ Cursor 的 `~/.cursor/mcp.json`，或 Claude Desktop 的 `claude_desktop_config.
 
 > "对虚拟 ECU 跑一次 UDS 安全访问，把 seed 和 key 给我。"
 
-共 24 个工具：`can_send`、`can_fuzz`、`can_analyze`、`uds_security_access`、
+共 27 个工具：`can_send`、`can_fuzz`、`can_analyze`、`uds_security_access`、
 `uds_read_did`、`uds_read_dtcs`、`uds_clear_dtcs`、`uds_decode_dtc`、`uds_raw`、
-`seedkey_solve`、`v2x_analyze`、`icsim_set_speed`、`icsim_tamper_demo`、
+`seedkey_solve`、`seedkey_vendors`、`seedkey_recover`、`v2x_analyze`、
+`icsim_set_speed`、`icsim_tamper_demo`、
 `doip_simulate`、`doip_probe`、`dbc_decode`、`dbc_info`、`j1939_decode`、`j1939_encode`、
-`j1939_decode_name`、`j1939_decode_dm1`、`isotp_segment`、`isotp_decode`、`isotp_reassemble`。
+`j1939_decode_name`、`j1939_decode_dm1`、`isotp_segment`、`isotp_decode`、
+`isotp_reassemble`、`isotp_explain`。
 
 ## 能力一览
 
@@ -78,7 +80,9 @@ Cursor 的 `~/.cursor/mcp.json`，或 Claude Desktop 的 `claude_desktop_config.
   走 ISO-TP（`udsoncan` + `can-isotp`）。
 - **CAN 重放 / 模糊**：重放 `candump` 日志，或对指定 ID 集合做变异模糊。
 - **CAN ID 发现**：按 ID 统计帧数、唯一载荷数、**哪些字节在变化**，定位控制信号。
-- **Seed-Key 求解**：可插拔算法注册表（含学习用示例算法与 UnlockECU 对接思路）。
+- **Seed-Key 求解与算法恢复**：可插拔算法注册表（xor / add / rotate / 位反转 /
+  半字节交换 / 大小端翻转 / CRC16 混合 / LFSR / SHA-256 密钥流），外加**算法恢复**——
+  喂几组观测到的 `(seed, key)`，自动穷举变换族并解出参数。
 - **V2X / ECDSA**：检测 nonce 复用并**恢复签名私钥**（真实验证过的数学）。
 - **ICSim 控制**：脚本化发送车速 / 车门 / 转向帧，演示仪表盘篡改。
 - **DoIP（ISO 13400）**：进程内虚拟 DoIP 实体，车辆发现、路由激活、以太网 UDS 读 VIN。
@@ -86,7 +90,7 @@ Cursor 的 `~/.cursor/mcp.json`，或 Claude Desktop 的 `claude_desktop_config.
 - **J1939（商用车）**：29 位 ID ↔ PGN/优先级/源地址（PDU1/PDU2）、NAME 解码、
   DM1 故障诊断（SPN/FMI/CM/OC）、EEC1 发动机转速。
 - **ISO-TP（ISO 15765-2）**：UDS 的传输层，纯实现 SF/FF/CF/FC 组帧、分段与重组
-  （含 CF 序列号校验），不依赖第三方库。
+  （含 CF 序列号校验），外加**多帧传输 ASCII 可视化**，不依赖第三方库。
 - **DoIP（ISO 13400-2）**：以太网诊断——车辆发现、路由激活、UDS over TCP/13400；
   自带**进程内模拟器**，`vehsec doip simulate` 无车无硬件即可跑通全流程。
 - **DBC 解析**：把 `1A4#1A02` 变成 `Speed = 41.5 km/h`。**纯标准库**实现，支持
@@ -118,6 +122,45 @@ $ vehsec uds raw --data 1901FF         # 任意 UDS 请求，原样返回响应
 三条故障码记录共 15 字节，装不进单帧 CAN，因此这条响应走的是**首帧 + 连续帧**
 的真实 ISO-TP 多帧路径——不是桩代码。
 
+## ISO-TP：30 秒上手
+
+VIN 响应有 20 字节，装不进单帧，`vehsec isotp explain` 把多帧过程直接画出来：
+
+```console
+$ vehsec isotp explain --data 62F1904142434445464748494A4B4C4D4E4F5051
+ISO-TP (ISO 15765-2) — 20-byte payload carried by 3 classic CAN frame(s)
+
+  #   frame bytes             PCI   kind  detail
+  0   10 14 62 F1 90 41 42 43 0x10  FF    total=20 B, carries bytes 0..5
+  1   21 44 45 46 47 48 49 4A 0x21  CF    seq=1, carries bytes 6..12
+  2   22 4B 4C 4D 4E 4F 50 51 0x22  CF    seq=2, carries bytes 13..19
+
+  reassembled payload:
+    62 F1 90 41 42 43 44 45 46 47 48 49
+    4A 4B 4C 4D 4E 4F 50 51
+    = 20 bytes
+```
+
+## Seed-Key 算法恢复：30 秒上手
+
+真车的 seed→key 算法藏在 OEM 的 DLL 里。抓几组 `(seed, key)`（重放 `27 01`，
+记录官方工具回的 key），交给 vehsec 反推：
+
+```console
+$ vehsec seedkey recover --pairs 11223344:4B78691E,a5b6c7d8:FFEC9D82,deadbeeF:84F7E4B5
+    Recovered candidates (high confidence, 3 pair(s), 4-byte seed)
+┌─────────────────────────┬────────────────────┐
+│ algorithm               │ key for first seed │
+├─────────────────────────┼────────────────────┤
+│ key[i] = seed[i] ^ 0x5A │ 4B78691E           │
+└─────────────────────────┴────────────────────┘
+```
+
+穷举覆盖 `xor c`、`add c`、`sub c`、`xor i ^ c`、`add i + c`、`rotl 1/3 ^ c`、
+`bitrev ^ c`、半字节交换、大小端翻转，以及仿射族 `a*seed[i]+b`。候选解必须对
+**所有**样本成立，因此 3 组以上样本通常收敛到唯一解。MCP 里同样可用：
+`seedkey_recover(pairs="11223344:4B78691E,...")`。
+
 ## 4 个可运行实验
 
 | 实验 | 主题 |
@@ -147,7 +190,7 @@ python labs/v2x-ecdsa-nonce/solve.py --gen 20 --no-reuse # 对照组：正确实
 
 ```bash
 pip install -e ".[all]" && pip install pytest
-pytest -q      # 172 passed：核心 / CLI / MCP 注册 / 4 个 lab / 演示脚本
+pytest -q      # 207 passed：核心 / CLI / MCP 注册 / 4 个 lab / 演示脚本
 ```
 
 CI 在 Python 3.11 / 3.12 / 3.13 上跑 ruff + pytest。

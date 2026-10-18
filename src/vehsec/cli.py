@@ -10,6 +10,7 @@ import json
 
 import click
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 console = Console()
@@ -237,8 +238,47 @@ def seedkey_vendors():
 
     t = Table(title="Registered Seed-Key vendors")
     t.add_column("vendor")
+    t.add_column("example key (seed 11223344)")
     for v in sk.known_vendors():
-        t.add_row(v)
+        try:
+            example = sk.solve(v, bytes.fromhex("11223344")).hex().upper()
+        except Exception:  # noqa: BLE001 - a bad user algorithm must not break listing
+            example = "?"
+        t.add_row(v, example)
+    console.print(t)
+
+
+@seedkey.command("recover")
+@click.option("--pairs", default=None,
+              help="observed 'seed:key' hex pairs, comma separated")
+@click.option("--file", "file_", default=None,
+              help='JSON file: [{"seed": "11223344", "key": "4B778899"}, ...]')
+@click.option("--max-results", default=12, show_default=True)
+def seedkey_recover(pairs, file_, max_results):
+    """Recover the seed->key algorithm from observed (seed, key) pairs."""
+    from . import seedkey as sk
+
+    if bool(pairs) == bool(file_):
+        raise click.UsageError("pass exactly one of --pairs or --file")
+    if file_:
+        with open(file_, "r", encoding="utf-8") as fh:
+            pairs = fh.read()
+
+    result = sk.recover(sk.parse_pairs(pairs), max_results=max_results)
+    if not result["candidates"]:
+        console.print(
+            "[yellow]no candidate matched[/] — no bundled family fits all pairs. "
+            "Try more pairs, or check that the key length equals the seed length."
+        )
+        return
+
+    t = Table(title=f"Recovered candidates ({result['confidence']} confidence, "
+                    f"{result['pairs']} pair(s), {result['seed_len']}-byte seed)")
+    t.add_column("algorithm")
+    t.add_column("key for first seed")
+    for c in result["candidates"]:
+        # expressions look like "key[i] = ..." — rich would eat "[i]" as markup
+        t.add_row(escape(c["expr"]), c["example_key"].upper())
     console.print(t)
 
 
@@ -546,6 +586,21 @@ def isotp_reassemble(frames):
 
     payload = reassemble([_hex(f) for f in frames.split(",")])
     console.print(f"[green]{payload.hex().upper()}[/]  ({len(payload)} bytes)")
+
+
+@isotp.command("explain")
+@click.option("--data", default=None, help="payload hex; segmented then drawn")
+@click.option("--frames", default=None, help="comma-separated frame hex list")
+def isotp_explain(data, frames):
+    """Draw the multi-frame transfer as an ASCII diagram."""
+    from .iso_tp import explain, explain_payload
+
+    if bool(data) == bool(frames):
+        raise click.UsageError("pass exactly one of --data or --frames")
+    if data:
+        console.print(explain_payload(_hex(data)))
+    else:
+        console.print(explain([_hex(f) for f in frames.split(",")]))
 
 
 # --------------------------------------------------------------------------- #

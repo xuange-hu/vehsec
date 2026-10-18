@@ -49,6 +49,21 @@ vehsec seedkey vendors
 
 真实车厂的算法藏在私有 DLL，参考 [UnlockECU](https://github.com/jglim/UnlockECU)。
 
+### 3.1 从抓到的样本反推算法
+
+拿不到 DLL 时，用**已知明文**反推：重放 `27 01` 取 seed，用官方工具拿到对应
+key，攒够 3 组以上交给恢复器。
+
+```bash
+vehsec seedkey recover --pairs 11223344:4B78691E,a5b6c7d8:FFEC9D82,deadbeeF:84F7E4B5
+# -> key[i] = seed[i] ^ 0x5A   (high confidence)
+```
+
+样本越多收敛越狠：1 组通常有一堆候选（`low`），3 组基本唯一（`high`）。
+恢复器只建模**等长**变换（4 字节 seed → 4 字节 key 是常态），非等长的要先确认
+是不是抓错了字节。穷举不到的（如真 SHA-256 掩码）会返回 `confidence: none`，
+这时应该转去逆向 DLL 而不是继续猜。
+
 ## 4. CAN 重放与模糊
 
 ```bash
@@ -127,11 +142,17 @@ vehsec j1939 name --value 0x0000A00012345678
 > "用 vehsec 对虚拟 ECU 做一次 UDS 安全访问，把 seed 和 key 给我。"
 
 可用工具：`can_send`、`can_fuzz`、`can_analyze`、`uds_security_access`、`uds_read_did`、
-`seedkey_solve`、`v2x_analyze`、`icsim_set_speed`、`icsim_tamper_demo`、`doip_simulate`、
-`doip_probe`、`dbc_decode`、`dbc_info`。
+`uds_read_dtcs`、`uds_clear_dtcs`、`uds_decode_dtc`、`uds_raw`、
+`seedkey_solve`、`seedkey_vendors`、`seedkey_recover`、
+`v2x_analyze`、`icsim_set_speed`、`icsim_tamper_demo`、`doip_simulate`、
+`doip_probe`、`dbc_decode`、`dbc_info`、`j1939_*`、`isotp_*`。
 
 补充手册：
 
+- **Seed-Key 反推**：`seedkey_recover(pairs="11223344:4B78691E,a5b6c7d8:FFEC9D82")`
+  直接对抓到的样本做算法恢复，返回候选表达式与置信度。
+- **ISO-TP 多帧可视化**：`isotp_explain(data_hex="62F190...")` 返回 ASCII 图，
+  排查"响应被截断 / 连续帧乱序"时比看裸 hex 快得多。
 - **DoIP（以太网诊断）**：`vehsec doip simulate` 起一个进程内 DoIP 实体（UDP 发现 +
   TCP UDS），完成「车辆声明 → 路由激活 → 22 F190 读 VIN」全流程；对真实网关用
   `vehsec doip probe --host <ip> --target 0x1000 --service 22F190`。

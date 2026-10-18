@@ -5,7 +5,7 @@
 > **No car required.**
 
 [![CI](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml/badge.svg)](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-172%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-207%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-2026%20standard-green.svg)](https://modelcontextprotocol.io)
@@ -58,12 +58,13 @@ Copy `examples/mcp-config.json` into your agent's MCP config
 
 > "Run a UDS security access on the virtual ECU and show me the seed and key."
 
-Twenty-four tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
+Twenty-seven tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
 `uds_security_access`, `uds_read_did`, `uds_read_dtcs`, `uds_clear_dtcs`,
-`uds_decode_dtc`, `uds_raw`, `seedkey_solve`, `v2x_analyze`, `icsim_set_speed`,
-`icsim_tamper_demo`, `doip_simulate`, `doip_probe`, `dbc_decode`, `dbc_info`,
+`uds_decode_dtc`, `uds_raw`, `seedkey_solve`, `seedkey_vendors`,
+`seedkey_recover`, `v2x_analyze`, `icsim_set_speed`, `icsim_tamper_demo`,
+`doip_simulate`, `doip_probe`, `dbc_decode`, `dbc_info`,
 `j1939_decode`, `j1939_encode`, `j1939_decode_name`, `j1939_decode_dm1`,
-`isotp_segment`, `isotp_decode`, `isotp_reassemble`.
+`isotp_segment`, `isotp_decode`, `isotp_reassemble`, `isotp_explain`.
 
 ## Capabilities
 
@@ -74,7 +75,10 @@ Twenty-four tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
 - **CAN replay & fuzz** — replay `candump` logs, or mutate frames against a set of IDs.
 - **CAN ID discovery** — per-ID counts, unique payloads, and *which bytes change*, to
   locate the control signal in an unknown vehicle.
-- **Seed-Key solver** — pluggable algorithm registry for the UDS 27 handshake.
+- **Seed-Key solver** — pluggable algorithm registry (xor / add / rotate / bit-reverse /
+  nibble-swap / endian-swap / CRC16-mixed / LFSR / SHA-256 keystream) for the UDS 27
+  handshake, plus **algorithm recovery**: feed it observed `(seed, key)` pairs and it
+  brute-forces the transform family and solves for the parameters.
 - **V2X / ECDSA** — detect nonce reuse and **recover the signer's private key**.
 - **ICSim control** — script speed / doors / turn signals on the virtual cluster.
 - **DoIP (ISO 13400)** — in-process virtual DoIP entity: vehicle discovery, routing
@@ -84,7 +88,8 @@ Twenty-four tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
 - **J1939 (trucks/buses)** — 29-bit id ↔ PGN/priority/source (PDU1 & PDU2), NAME
   decode, DM1 diagnostics (SPN/FMI/CM/OC), EEC1 engine speed.
 - **ISO-TP (ISO 15765-2)** — the UDS transport layer, from scratch: SF/FF/CF/FC
-  framing, segmentation and reassembly with sequence validation.
+  framing, segmentation and reassembly with sequence validation, and an
+  **ASCII visualisation** of the whole transfer.
 - **DTC (diagnostic trouble codes)** — read faults (19 sub 01/02/0A), clear them
   (14), and decode the 3-byte code into its SAE J2012 identifier (`C10000` →
   `U0100`) with status flags and a short description.
@@ -146,10 +151,50 @@ $ vehsec uds raw --data 1901FF         # any request, response returned verbatim
 Three records are 15 bytes, so this response is carried by a first frame plus
 consecutive frames — the ISO-TP path is the real one, not a stub.
 
+## ISO-TP in 30 seconds
+
 The VIN response is 20 bytes, so it is carried by a first frame plus two
-consecutive frames — you can watch that happen frame by frame with
-`vehsec isotp segment`. Point it at metal or UDSim instead with
+consecutive frames. `vehsec isotp explain` draws exactly how:
+
+```console
+$ vehsec isotp explain --data 62F1904142434445464748494A4B4C4D4E4F5051
+ISO-TP (ISO 15765-2) — 20-byte payload carried by 3 classic CAN frame(s)
+
+  #   frame bytes             PCI   kind  detail
+  0   10 14 62 F1 90 41 42 43 0x10  FF    total=20 B, carries bytes 0..5
+  1   21 44 45 46 47 48 49 4A 0x21  CF    seq=1, carries bytes 6..12
+  2   22 4B 4C 4D 4E 4F 50 51 0x22  CF    seq=2, carries bytes 13..19
+
+  reassembled payload:
+    62 F1 90 41 42 43 44 45 46 47 48 49
+    4A 4B 4C 4D 4E 4F 50 51
+    = 20 bytes
+```
+
+Point it at metal or UDSim instead with
 `VEHSEC_CAN_IFACE=socketcan VEHSEC_CAN_CHANNEL=vcan0` plus `auto_ecu=False`.
+
+## Seed-Key algorithm recovery in 30 seconds
+
+Real ECUs hide their seed→key algorithm in an OEM DLL. Capture a few
+`(seed, key)` pairs (replay `27 01`, log what the official tool answers with)
+and let `vehsec` work out the transform:
+
+```console
+$ vehsec seedkey recover --pairs 11223344:4B78691E,a5b6c7d8:FFEC9D82,deadbeeF:84F7E4B5
+    Recovered candidates (high confidence, 3 pair(s), 4-byte seed)
+┌─────────────────────────┬────────────────────┐
+│ algorithm               │ key for first seed │
+├─────────────────────────┼────────────────────┤
+│ key[i] = seed[i] ^ 0x5A │ 4B78691E           │
+└─────────────────────────┴────────────────────┘
+```
+
+The catalogue covers `xor c`, `add c`, `sub c`, `xor i ^ c`, `add i + c`,
+`rotl 1/3 ^ c`, `bitrev ^ c`, `nibble-swap ^ c`, endian-swap, and the affine
+family `a*seed[i]+b`. Every result is checked against **all** supplied pairs, so
+three or more pairs usually collapse to a single answer. Same thing over MCP:
+`seedkey_recover(pairs="11223344:4B78691E,...")`.
 
 ## DoIP & DBC in 30 seconds
 
@@ -177,7 +222,7 @@ vehsec dbc watch   --file examples/sample.dbc --log capture.log   # decode a who
 
 ```bash
 pip install -e ".[all]" && pip install pytest
-pytest -q      # 172 passed: core, CLI, MCP registration, all 4 labs, demo script
+pytest -q      # 207 passed: core, CLI, MCP registration, all 4 labs, demo script
 ```
 
 CI runs ruff + pytest on Python 3.11 / 3.12 / 3.13.

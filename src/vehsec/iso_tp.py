@@ -142,3 +142,110 @@ def describe(frames: list[bytes]) -> list[dict]:
         d["frame"] = bytes(raw).hex()
         out.append(d)
     return out
+
+
+# --------------------------------------------------------------------------- #
+# ASCII visualisation
+# --------------------------------------------------------------------------- #
+_FLOW_NAMES = {FLOW_CONTINUE: "CTS", FLOW_WAIT: "WAIT", FLOW_OVERFLOW: "OVFL"}
+_FRAME_W = 8  # classic CAN data-field width
+
+_PAD = "--"  # marker for bytes the frame does not use
+
+
+def _hex_row(raw: bytes, width: int = _FRAME_W) -> str:
+    cells = [f"{b:02X}" for b in raw[:width]]
+    cells += [_PAD] * (width - len(cells))
+    return " ".join(cells)
+
+
+def _span(start: int, count: int) -> str:
+    if count <= 0:
+        return "-"
+    return f"{start}..{start + count - 1}" if count > 1 else f"{start}"
+
+
+def explain(frames: list[bytes], width: int = _FRAME_W) -> str:
+    """Render an ISO-TP transfer as an ASCII diagram.
+
+    This is the teaching asset: it shows, byte by byte, how a payload longer
+    than 8 bytes is chopped into a First Frame plus Consecutive Frames, where
+    the sequence numbers come from, and what the reassembled payload is.
+
+    >>> print(explain(segment(bytes(range(20)))))
+    """
+    frames = [bytes(f) for f in frames]
+    if not frames:
+        raise ValueError("no frames to explain")
+
+    rows: list[tuple[str, str, str, str]] = []   # idx, hexrow, kind, detail
+    payload = bytearray()
+    offset = 0
+    total: int | None = None
+    started = False
+
+    for i, raw in enumerate(frames):
+        d = decode(raw)
+        kind = d["type"]
+        if kind == "SF":
+            data = d["data"]
+            payload += data
+            rows.append((str(i), _hex_row(raw, width), "SF",
+                         f"len={d['length']} B — complete in one frame"))
+            total = len(data)
+            started = True
+        elif kind == "FF":
+            total = d["total"]
+            data = d["data"]
+            payload += data
+            offset = len(data)
+            rows.append((str(i), _hex_row(raw, width), "FF",
+                         f"total={total} B, carries bytes {_span(0, len(data))}"))
+            started = True
+        elif kind == "CF":
+            data = d["data"]
+            payload += data
+            rows.append((str(i), _hex_row(raw, width), "CF",
+                         f"seq={d['seq']}, carries bytes {_span(offset, len(data))}"))
+            offset += len(data)
+        else:  # FC
+            fs = d["flow_status"]
+            rows.append((str(i), _hex_row(raw, width), "FC",
+                         f"flow={_FLOW_NAMES.get(fs, fs)} block={d['block_size']} "
+                         f"st_min={d['st_min']}"))
+
+    n_payload = len(payload)
+    title_total = total if total is not None else n_payload
+    lines = [
+        f"ISO-TP (ISO 15765-2) — {title_total}-byte payload "
+        f"carried by {len(frames)} classic CAN frame(s)",
+        "",
+        f"  {'#':<3} {'frame bytes':<{width * 3 - 1}} PCI   kind  detail",
+    ]
+    for idx, hexrow, kind, detail in rows:
+        pci = f"0x{int(hexrow.split()[0], 16):02X}" if not hexrow.startswith(_PAD) else "  -"
+        lines.append(f"  {idx:<3} {hexrow:<{width * 3 - 1}} {pci:<5} {kind:<5} {detail}")
+
+    lines.append("")
+    if started and total is not None and n_payload >= total:
+        body = payload[:total].hex().upper()
+        # wrap the payload hex so long transfers stay readable
+        per_line = width * 3
+        chunks = [body[j:j + per_line] for j in range(0, len(body), per_line)] or ["(empty)"]
+        lines.append("  reassembled payload:")
+        for j, chunk in enumerate(chunks):
+            prefix = "    " if j == 0 else "    "
+            pretty = " ".join(chunk[k:k + 2] for k in range(0, len(chunk), 2))
+            lines.append(f"{prefix}{pretty}")
+        lines.append(f"    = {total} bytes")
+    else:
+        lines.append(
+            f"  reassembled payload: INCOMPLETE — got {n_payload} of {total} bytes "
+            "(missing consecutive frames?)"
+        )
+    return "\n".join(lines)
+
+
+def explain_payload(data: bytes, width: int = _FRAME_W) -> str:
+    """Segment ``data`` and render the resulting transfer as ASCII."""
+    return explain(segment(data), width=width)
