@@ -13,7 +13,7 @@
 
 ## Checklist / 提交前检查
 
-- [ ] `pytest -q` passes (25 tests, including all 4 labs and the demo script)
+- [ ] `pytest -q` passes (220 tests, including all 5 labs and the demo script)
 - [ ] `ruff check src tests --select=E9,F63,F7,F82` passes
 - [ ] New capability is exposed on **all three** surfaces (core + CLI + MCP)
 - [ ] New MCP tool has a docstring (agents read it to decide when to call)

@@ -20,11 +20,12 @@ lint:                       ## ruff: syntax / undefined names
 demo:                       ## run the scripted demo (record it for the README)
 	python examples/demo.py
 
-labs:                       ## run all four lab solvers
+labs:                       ## run all five lab solvers
 	python labs/uds-did-decrypt/solve.py
 	python labs/delta-forge-patchchain/solve.py
 	python labs/v2x-ecdsa-nonce/solve.py --gen 20 --reuse
 	python labs/sentinel2-can-statemachine/solve.py
+	python labs/seedkey-recover/solve.py
 
 mcp:                        ## start the MCP server (stdio)
 	vehsec mcp

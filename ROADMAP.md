@@ -119,3 +119,25 @@
 ## 关键指标
 GitHub Trending 按「星增速」加权：24–48 小时内冲 50–200 星即可上榜，上榜后日增
 300–1000。因此发布要集中、演示要可视化、README 要 3 步跑通。
+
+### v0.2.0 进度（2026-10-19）
+- 测试 207 → **220**（+13）；MCP 工具 27 → **28**；CTF Lab 4 → **5**。
+- **第 5 个 CTF Lab：`labs/seedkey-recover`（本次主线）**。把 10-18 新增的
+  `recover()` 变成可玩内容——纯功能对 star 的转化率远低于可跑的实验。攻击链：
+  抓 5 组 `(seed, key)` → 穷举 11 个变换族 → 用**未见过的新 seed** 做泛化验证 →
+  走 `0x27 01/02` 握手解锁 → 读受保护的 `0xF190`。零第三方依赖。
+- **`recover_algorithm()` / `predict()`（把恢复结果变成可用资产）**：此前
+  `recover()` 只返回一份报告，拿不到可调用的算法，用户在 shell 里看完还得自己
+  手写一遍表达式。现在 `recover_algorithm(pairs)` 直接返回 `(expr, fn)`，
+  `fn` 可以 `register()` 回注册表继续用 `solve()`；`predict(pairs, seed)` 一步
+  给出新 seed 的 key。CLI 新增 `vehsec seedkey predict`，MCP 新增 `seedkey_predict`。
+- **教学性设计（值得复用到其它 lab）**：刻意让第一条样本的 seed 是 `5a5a5a5a`
+  （四字节全同），于是 1 组样本时有 12 个候选（触到 `max_results` 上限，low），
+  2 组收敛到 1 个（medium），3 组以上 high。`--pairs 1` 会跑到
+  `0x7F 27 35 invalidKey` —— **拟合得上但解锁不了**，这个失败分支比成功分支更有
+  教学价值，且把"为什么实车要多抓几次会话"讲清楚了。
+- 踩坑记录：
+  * 展示"(capped)"时要显式标注 `max_results` 上限，否则读者会以为候选真的只有
+    12 个，把 `low` 置信度误读成"已经很接近答案"。
+  * 断言"新 seed 没被观测过"时我第一版写反了（返回 None 反而断言通过），改成
+    `assert seed not in [s for s, _ in pairs]` 直白写法最稳。

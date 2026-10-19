@@ -19,6 +19,7 @@ EXPECTED = {
     "seedkey_solve",
     "seedkey_vendors",
     "seedkey_recover",
+    "seedkey_predict",
     "v2x_analyze",
     "icsim_set_speed",
     "icsim_tamper_demo",

@@ -16,7 +16,7 @@ pip install pytest ruff
 ## Run the checks (must pass before PR)
 
 ```bash
-pytest -q                                    # 22 tests: core, CLI, MCP, all 4 labs
+pytest -q                                    # 220 tests: core, CLI, MCP, all 5 labs
 ruff check src tests --select=E9,F63,F7,F82  # syntax / undefined names
 python labs/v2x-ecdsa-nonce/solve.py --gen 20 --reuse
 ```

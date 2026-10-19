@@ -282,6 +282,31 @@ def seedkey_recover(pairs, file_, max_results):
     console.print(t)
 
 
+@seedkey.command("predict")
+@click.option("--pairs", default=None, help="observed 'seed:key' pairs (source)")
+@click.option("--file", "file_", default=None,
+              help="same, read from a JSON file")
+@click.option("--seed", required=True, help="a FRESH seed to unlock (hex)")
+def seedkey_predict(pairs, file_, seed):
+    """Recover the algorithm from observed pairs, then solve a fresh seed.
+
+    This is the field workflow: you captured what the OEM tool answered for a
+    few sessions and now want to unlock the next one without knowing the DLL.
+    """
+    from . import seedkey as sk
+
+    if bool(pairs) == bool(file_):
+        raise click.UsageError("pass exactly one of --pairs or --file")
+    if file_:
+        with open(file_, "r", encoding="utf-8") as fh:
+            pairs = fh.read()
+
+    out = sk.predict(sk.parse_pairs(pairs), _hex(seed))
+    console.print(f"[green]algorithm[/] {escape(out['expr'])}")
+    console.print(f"[green]key[/]      {out['key'].upper()}  "
+                  f"({out['confidence']} confidence, {out['pairs']} pair(s))")
+
+
 # --------------------------------------------------------------------------- #
 # V2X
 # --------------------------------------------------------------------------- #

@@ -32,9 +32,15 @@ jobs:
       - name: Tests
         run: pytest -q
 
-      - name: Lab smoke (Docker not required)
+      # Really run every solver: a lab that stops working is a broken README.
+      # v2x writes a signature dump, so point it outside the working tree.
+      - name: Labs (all five solvers must succeed)
         run: |
-          for d in labs/*/; do
-            echo "== $d"
-            python "$d/solve.py" --help >/dev/null 2>&1 || true
+          set -e
+          for lab in uds-did-decrypt delta-forge-patchchain sentinel2-can-statemachine seedkey-recover; do
+            echo "== $lab"
+            python "labs/$lab/solve.py"
           done
+          echo "== v2x-ecdsa-nonce"
+          python labs/v2x-ecdsa-nonce/solve.py --gen 20 --out "$RUNNER_TEMP/v2x-sigs.json"
+          python labs/v2x-ecdsa-nonce/solve.py --gen 20 --no-reuse --out "$RUNNER_TEMP/v2x-clean.json"

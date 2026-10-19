@@ -43,9 +43,12 @@ Claude Code or Cursor "run a UDS security access on the virtual ECU" and it will
 drive the 27-service handshake and hand you the seed/key.
 
 Everything runs on a virtual CAN bus (python-can 'virtual', or vcan0 + ICSim on
-Linux), so there is no hardware in the loop and nothing to brick. Four Docker labs
+Linux), so there is no hardware in the loop and nothing to brick. Five Docker labs
 cover: UDS DID decryption, an OTA patch-chain diff, recovering an ECDSA private key
-from a reused V2X nonce, and a CAN state-machine injection.
+from a reused V2X nonce, a CAN state-machine injection, and UDS 0x27 Seed-Key —
+give it five sniffed (seed, key) pairs and it reconstructs the algorithm, then
+unlocks the next session with a seed it never saw. That last one needs nothing but
+the stdlib.
 
 The V2X one is real math, not a toy: two signatures sharing a nonce give you
 k = (z1-z2)(s1-s2)^-1 and d = (s1k-z1)r^-1 mod n.
@@ -63,7 +66,7 @@ vehsec — modern CAN/UDS/Seed-Key/V2X toolkit with an MCP server (no hardware n
 
 **正文要点**
 - 解决了什么：现有工具（CANalyzat0r / UDSim / CANToolz / ICSim）文档稀少、Shell 化严重
-- 亮点：`vehsec mcp` 让 Agent 直接调用；4 个 Docker lab
+- 亮点：`vehsec mcp` 让 Agent 直接调用；5 个 Docker lab（含 Seed-Key 算法恢复）
 - 声明：仅授权研究 / 教学
 - 结尾问：想要 DoIP 还是 J1939 先做？
 
@@ -73,17 +76,18 @@ vehsec — modern CAN/UDS/Seed-Key/V2X toolkit with an MCP server (no hardware n
 **Description**
 ```
 CAN, UDS, Seed-Key, V2X and ICSim in one modern toolkit. Use it from a CLI, a TUI,
-or let Claude Code / Cursor drive it over MCP. Four Docker labs, no car required.
+or let Claude Code / Cursor drive it over MCP. Five Docker labs (including UDS 0x27 Seed-Key recovery), no car required.
 ```
 **First comment**：放 30 秒 GIF（`python examples/demo.py` 录屏）+ 3 步跑通命令。
 
-## 5. X / 推文串（5 条）
+## 5. X / 推文串（6 条）
 
 1. 车联网安全工具太散了。我把 CAN/UDS/Seed-Key/V2X/ICSim 收进了一个现代工具链 `vehsec`。👇
 2. 三种入口：CLI（`vehsec`）、TUI（`vehsec tui`）、MCP（`vehsec mcp`）。第三种是重点。
 3. `vehsec mcp` 之后，直接对 Claude Code 说"跑一次 UDS 安全访问"，它会自己走完 27 服务握手并把 seed/key 给你。
-4. 4 个 Docker 实验：UDS DID 解密、OTA 补丁链差分、V2X ECDSA nonce 复用恢复私钥、CAN 状态机注入。全部不需要真车。
-5. V2X 那条是真数学：同一 nonce 下两条签名 → `k=(z1-z2)(s1-s2)^-1`，`d=(s1k-z1)r^-1 mod n`。🔗 github.com/xuange-hu/vehsec
+4. 5 个 Docker 实验全部不需要真车：UDS DID 解密、OTA 补丁链差分、V2X ECDSA nonce 复用恢复私钥、CAN 状态机注入、Seed-Key 算法恢复。
+5. Seed-Key 那条是我最喜欢的：给 5 组嗅探到的 `(seed, key)`，它穷举 11 个变换族把算法反推出来，再拿一个**没见过的新 seed** 去走 `0x27 02` 解锁 ECU。 `--pairs 1` 的失败分支更有意思：算法拟合得上，但 ECU 回 `0x7F 27 35`。
+6. V2X 那条是真数学：同一 nonce 下两条签名 → `k=(z1-z2)(s1-s2)^-1`，`d=(s1k-z1)r^-1 mod n`。🔗 github.com/xuange-hu/vehsec
 
 ## 6. Awesome 清单 PR 用的条目
 
@@ -97,7 +101,7 @@ or let Claude Code / Cursor drive it over MCP. Four Docker labs, no car required
 ## 7. 中文社区（掘金 / 知乎）
 
 标题建议：《我写了一个能被 AI Agent 调用的车联网安全工具：vehsec》
-结构：痛点 → 三种入口 → MCP 集成细节 → 4 个实验的技术点 → 踩坑（can-isotp 包名、
+结构：痛点 → 三种入口 → MCP 集成细节 → 5 个实验的技术点 → 踩坑（can-isotp 包名、
 mcp 2.x 改名、sha256 密钥流截断、ecdsa.numbertheory 没有 inverse）→ 路线图。
 
 ## 8. 发布当天节奏

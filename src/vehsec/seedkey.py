@@ -313,19 +313,23 @@ def _matches(fn: Callable[[bytes], bytes], pairs: Sequence[tuple[bytes, bytes]])
     return True
 
 
-def recover(pairs: Sequence[tuple[bytes, bytes]], max_results: int = 12) -> dict:
-    """Recover candidate seed->key algorithms from observed ``(seed, key)`` pairs.
+def _search(norm: Sequence[tuple[bytes, bytes]],
+            max_results: int) -> list[tuple[str, dict, Callable[[bytes], bytes]]]:
+    """Brute-force the families; return ``(expr, params, fn)`` triples."""
+    found: list[tuple[str, dict, Callable[[bytes], bytes]]] = []
+    for template, builder in _families():
+        for p in _param_space(template):
+            fn = builder(p)
+            if not _matches(fn, norm):
+                continue
+            params = {"c": p} if isinstance(p, int) else {"a": p[0], "b": p[1]}
+            found.append((template.format(**params), params, fn))
+            if len(found) >= max_results:
+                return found
+    return found
 
-    ``pairs`` is a sequence of ``(seed_bytes, key_bytes)`` captured from a real
-    ECU (e.g. by replaying service 0x27 ``requestSeed`` and logging the key an
-    official tool sends back).
 
-    Returns a dict with ``seed_len``, ``pairs``, ``count``, ``confidence`` and
-    ``candidates`` (each with ``expr`` / ``params`` / ``example_key``).
-    """
-    if not pairs:
-        raise ValueError("need at least one (seed, key) pair")
-
+def _normalise(pairs: Sequence[tuple[bytes, bytes]]) -> list[tuple[bytes, bytes]]:
     norm: list[tuple[bytes, bytes]] = []
     seed_len = len(pairs[0][0])
     for seed, key in pairs:
@@ -341,23 +345,28 @@ def recover(pairs: Sequence[tuple[bytes, bytes]], max_results: int = 12) -> dict
                 "recover() only models length-preserving transforms"
             )
         norm.append((seed, key))
+    return norm
 
-    candidates: list[dict] = []
-    for template, builder in _families():
-        for p in _param_space(template):
-            fn = builder(p)
-            if not _matches(fn, norm):
-                continue
-            params = {"c": p} if isinstance(p, int) else {"a": p[0], "b": p[1]}
-            candidates.append({
-                "expr": template.format(**params),
-                "params": params,
-                "example_key": fn(norm[0][0]).hex(),
-            })
-            if len(candidates) >= max_results:
-                break
-        if len(candidates) >= max_results:
-            break
+
+def recover(pairs: Sequence[tuple[bytes, bytes]], max_results: int = 12) -> dict:
+    """Recover candidate seed->key algorithms from observed ``(seed, key)`` pairs.
+
+    ``pairs`` is a sequence of ``(seed_bytes, key_bytes)`` captured from a real
+    ECU (e.g. by replaying service 0x27 ``requestSeed`` and logging the key an
+    official tool sends back).
+
+    Returns a dict with ``seed_len``, ``pairs``, ``count``, ``confidence`` and
+    ``candidates`` (each with ``expr`` / ``params`` / ``example_key``).
+    """
+    if not pairs:
+        raise ValueError("need at least one (seed, key) pair")
+
+    norm = _normalise(pairs)
+
+    candidates = [
+        {"expr": expr, "params": params, "example_key": fn(norm[0][0]).hex()}
+        for expr, params, fn in _search(norm, max_results)
+    ]
 
     n = len(norm)
     if not candidates:
@@ -370,11 +379,59 @@ def recover(pairs: Sequence[tuple[bytes, bytes]], max_results: int = 12) -> dict
         confidence = "low"
 
     return {
-        "seed_len": seed_len,
+        "seed_len": len(norm[0][0]),
         "pairs": n,
         "count": len(candidates),
         "confidence": confidence,
         "candidates": candidates,
+    }
+
+
+def recover_algorithm(
+    pairs: Sequence[tuple[bytes, bytes]],
+    max_results: int = 12,
+) -> tuple[str, Callable[[bytes], bytes]]:
+    """Recover an unknown seed->key algorithm and hand it back **as a callable**.
+
+    This is the programmatic counterpart of :func:`recover`: instead of a report,
+    you get ``(expression, fn)`` where ``fn(seed) -> key`` reproduces every
+    observed pair. Register it with :func:`register` to use it through
+    :func:`solve` afterwards::
+
+        expr, fn = recover_algorithm(pairs)
+        register("captured_ecu", fn)
+        solve("captured_ecu", fresh_seed)
+
+    Raises :class:`LookupError` when no family fits all the pairs.
+    """
+    if not pairs:
+        raise ValueError("need at least one (seed, key) pair")
+    norm = _normalise(pairs)
+    found = _search(norm, max_results)
+    if not found:
+        raise LookupError(
+            f"no bundled family explains all {len(norm)} pair(s). Try feeding "
+            "more pairs, or implement the transform yourself and register() it."
+        )
+    expr, _params, fn = found[0]
+    return expr, fn
+
+
+def predict(pairs: Sequence[tuple[bytes, bytes]], seed: bytes) -> dict:
+    """Recover the algorithm from ``pairs`` and apply it to a **fresh** ``seed``.
+
+    This is the real workflow: you observed what an OEM tool answered for a few
+    seeds and now want to unlock a new session without ever reading the DLL.
+    Returns ``{"expr", "key", "confidence", "count"}``.
+    """
+    report = recover(pairs)
+    expr, fn = recover_algorithm(pairs)
+    return {
+        "expr": expr,
+        "key": fn(bytes(seed)).hex(),
+        "confidence": report["confidence"],
+        "count": report["count"],
+        "pairs": report["pairs"],
     }
 
 

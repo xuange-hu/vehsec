@@ -6,6 +6,22 @@ All notable changes to `vehsec` are documented here. Format follows
 ## [Unreleased] — v0.2.0
 
 ### Added
+- **`labs/seedkey-recover` — Lab 5, UDS 0x27 Seed-Key recovery** (zero third-party
+  dependencies; stdlib + `vehsec.seedkey`):
+  - Five sniffed `(seed, key)` pairs, a held-out seed that was never observed, a
+    benchmark ECU implementing `0x27 01/02` plus a DID behind the security level.
+  - `solve.py --pairs N` shows the search narrowing as evidence grows (1 pair →
+    12 candidates / `low`, 2 → 1 / `medium`, 3+ → `high`), and `--pairs 1` ends in
+    `0x7F 27 35 invalidKey` — the candidate fit the observation but failed the
+    unlock, which is exactly the lesson.
+  - Dockerfile / docker-compose included; `make labs` now runs all five.
+- `seedkey` — **use the recovery result** instead of only reading it:
+  - `recover_algorithm(pairs)` → `(expression, callable)`; the callable reproduces
+    every observed pair and can be fed straight back through `register()` + `solve()`.
+  - `predict(pairs, seed)` → the key for a **seed you never captured**, plus the
+    recovered expression and the confidence rating.
+  - CLI: `vehsec seedkey predict --pairs|--file --seed <hex>`.
+    MCP: `seedkey_predict` (28 tools total, up from 27).
 - `seedkey` — **algorithm recovery** (turn captured seed/key pairs into an algorithm):
   - `recover(pairs)` brute-forces a catalogue of parameterised transform families —
     `xor c`, `add c`, `sub c`, `xor i ^ c`, `add i + c`, `rotl 1/3 ^ c`,

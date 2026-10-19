@@ -168,6 +168,18 @@ def seedkey_recover(pairs: str, max_results: int = 12) -> str:
 
 
 @mcp.tool()
+def seedkey_predict(pairs: str, seed_hex: str) -> str:
+    """Recover a seed->key algorithm from observed pairs and solve a fresh seed.
+
+    Give it 'seed:key' hex pairs captured from one ECU and a NEW seed from the
+    next session; it returns an algorithm expression plus the key for that seed.
+    This is how you unlock a session without ever reading the OEM DLL."""
+    from . import seedkey as sk
+
+    return json.dumps(sk.predict(sk.parse_pairs(pairs), bytes.fromhex(seed_hex)))
+
+
+@mcp.tool()
 def v2x_analyze(file: str) -> str:
     """Analyze V2X ECDSA signatures (JSON list of {r,s,z}) for nonce reuse.
     Returns recovered private keys."""

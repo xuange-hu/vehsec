@@ -4,7 +4,7 @@
 > 三种入口，让你（或 AI 编程 Agent）直接驱动。**不需要真车。**
 
 [![CI](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml/badge.svg)](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-207%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-220%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-2026%20标准-green.svg)](https://modelcontextprotocol.io)
@@ -27,7 +27,7 @@ Shell 化严重，**新手很难在不动真车的前提下上手**。
   Seed-Key 求解、V2X 签名分析、ICSim 仪表盘篡改演示。
 - 全部实验**基于虚拟总线**（`python-can virtual`，或 Linux `vcan0` + ICSim），
   配 Docker Lab，**不需要真车，也不会刷坏 ECU**。
-- 既是学习资源（精选清单 + 4 个 CTF 实验），也是可用的工具链。
+- 既是学习资源（精选清单 + 5 个 CTF 实验），也是可用的工具链。
 
 ## 三大支柱
 
@@ -35,7 +35,7 @@ Shell 化严重，**新手很难在不动真车的前提下上手**。
 |------|------|------|
 | `vehsec` core + **CLI/TUI** | 现代化汽车安全工具包 | 安全工具，高热垂直 |
 | **MCP Server**（`vehsec mcp`） | 封装为 MCP，供 Claude Code / Cursor / Cline 调用 | 蹭 2026 最大热点 AI Agent |
-| **awesome-vehicle-security** + **labs/** | 精选清单 + 4 个可运行 CTF 实验 | 学习资源，易传播 |
+| **awesome-vehicle-security** + **labs/** | 精选清单 + 5 个可运行 CTF 实验 | 学习资源，易传播 |
 
 ## 架构
 
@@ -65,9 +65,10 @@ Cursor 的 `~/.cursor/mcp.json`，或 Claude Desktop 的 `claude_desktop_config.
 
 > "对虚拟 ECU 跑一次 UDS 安全访问，把 seed 和 key 给我。"
 
-共 27 个工具：`can_send`、`can_fuzz`、`can_analyze`、`uds_security_access`、
+共 28 个工具：`can_send`、`can_fuzz`、`can_analyze`、`uds_security_access`、
 `uds_read_did`、`uds_read_dtcs`、`uds_clear_dtcs`、`uds_decode_dtc`、`uds_raw`、
-`seedkey_solve`、`seedkey_vendors`、`seedkey_recover`、`v2x_analyze`、
+`seedkey_solve`、`seedkey_vendors`、`seedkey_recover`、`seedkey_predict`、
+`v2x_analyze`、
 `icsim_set_speed`、`icsim_tamper_demo`、
 `doip_simulate`、`doip_probe`、`dbc_decode`、`dbc_info`、`j1939_decode`、`j1939_encode`、
 `j1939_decode_name`、`j1939_decode_dm1`、`isotp_segment`、`isotp_decode`、
@@ -82,7 +83,9 @@ Cursor 的 `~/.cursor/mcp.json`，或 Claude Desktop 的 `claude_desktop_config.
 - **CAN ID 发现**：按 ID 统计帧数、唯一载荷数、**哪些字节在变化**，定位控制信号。
 - **Seed-Key 求解与算法恢复**：可插拔算法注册表（xor / add / rotate / 位反转 /
   半字节交换 / 大小端翻转 / CRC16 混合 / LFSR / SHA-256 密钥流），外加**算法恢复**——
-  喂几组观测到的 `(seed, key)`，自动穷举变换族并解出参数。
+  喂几组观测到的 `(seed, key)`，自动穷举变换族并解出参数；`seedkey predict` /
+  `seedkey.predict()` 再把恢复出的算法套到一个**从未观测到的新 seed** 上，
+  这就是"不读 DLL 也能解锁下一次会话"的那一步。
 - **V2X / ECDSA**：检测 nonce 复用并**恢复签名私钥**（真实验证过的数学）。
 - **ICSim 控制**：脚本化发送车速 / 车门 / 转向帧，演示仪表盘篡改。
 - **DoIP（ISO 13400）**：进程内虚拟 DoIP 实体，车辆发现、路由激活、以太网 UDS 读 VIN。
@@ -161,7 +164,18 @@ $ vehsec seedkey recover --pairs 11223344:4B78691E,a5b6c7d8:FFEC9D82,deadbeeF:84
 **所有**样本成立，因此 3 组以上样本通常收敛到唯一解。MCP 里同样可用：
 `seedkey_recover(pairs="11223344:4B78691E,...")`。
 
-## 4 个可运行实验
+**关键是泛化**：能拟合观测样本不等于恢复出了真算法，`seedkey predict`（MCP
+`seedkey_predict` / 库函数 `vehsec.seedkey.predict()`）把结果套到从未见过的新
+seed 上才算数：
+
+```console
+$ vehsec seedkey predict --pairs 11223344:4B78691E,a5b6c7d8:FFEC9D82,deadbeeF:84F7E4B5 \
+                         --seed 00112233
+algorithm key[i] = seed[i] ^ 0x5A
+key      5A4B7869  (high confidence, 3 pair(s))
+```
+
+## 5 个可运行实验
 
 | 实验 | 主题 |
 |------|------|
@@ -169,10 +183,15 @@ $ vehsec seedkey recover --pairs 11223344:4B78691E,a5b6c7d8:FFEC9D82,deadbeeF:84
 | [`labs/delta-forge-patchchain`](labs/delta-forge-patchchain) | OTA 补丁链差分揭示隐藏载荷 |
 | [`labs/v2x-ecdsa-nonce`](labs/v2x-ecdsa-nonce) | ECDSA nonce 复用 → 私钥恢复 |
 | [`labs/sentinel2-can-statemachine`](labs/sentinel2-can-statemachine) | CAN 状态机注入（鉴权守卫缺失） |
+| [`labs/seedkey-recover`](labs/seedkey-recover) | UDS 0x27 Seed-Key：5 组样本反推算法，再用未见过的 seed 解锁 ECU |
 
 ```bash
 python labs/v2x-ecdsa-nonce/solve.py --gen 20            # 默认即注入 nonce 复用，首跑就成功
 python labs/v2x-ecdsa-nonce/solve.py --gen 20 --no-reuse # 对照组：正确实现，无可利用
+
+# Lab 5 零第三方依赖（标准库 + vehsec.seedkey），是最好上手的一个
+python labs/seedkey-recover/solve.py            # 5 组样本 → 唯一解 → 解锁 → flag
+python labs/seedkey-recover/solve.py --pairs 1  # 样本太少：拟合得上，解锁不了（NRC 0x35）
 ```
 
 ## 文档
@@ -190,7 +209,7 @@ python labs/v2x-ecdsa-nonce/solve.py --gen 20 --no-reuse # 对照组：正确实
 
 ```bash
 pip install -e ".[all]" && pip install pytest
-pytest -q      # 207 passed：核心 / CLI / MCP 注册 / 4 个 lab / 演示脚本
+pytest -q      # 220 passed：核心 / CLI / MCP 注册 / 5 个 lab / 演示脚本
 ```
 
 CI 在 Python 3.11 / 3.12 / 3.13 上跑 ruff + pytest。

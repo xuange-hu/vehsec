@@ -76,3 +76,22 @@ def test_can_fuzz_runs_on_virtual_bus():
     r = CliRunner().invoke(cli, ["can", "fuzz", "--ids", "0x1A4", "--rounds", "3"])
     assert r.exit_code == 0, r.output
     assert "fuzzed" in r.output
+
+
+def test_seedkey_predict_solves_an_unobserved_seed():
+    """Recover from observations, then answer a fresh seed — the real workflow."""
+    runner = CliRunner()
+    r = runner.invoke(cli, ["seedkey", "predict",
+                            "--pairs", "11223344:4B78691E,a5b6c7d8:FFEC9D82,"
+                                       "deadbeeF:84F7E4B5",
+                            "--seed", "00112233"])
+    assert r.exit_code == 0, r.output
+    assert "seed[i] ^ 0x5A" in r.output          # the recovered expression
+    assert "5A4B7869" in r.output                # xor 0x5A applied to 00112233
+
+
+def test_seedkey_predict_requires_exactly_one_source():
+    runner = CliRunner()
+    r = runner.invoke(cli, ["seedkey", "predict", "--seed", "00112233"])
+    assert r.exit_code != 0
+    assert "exactly one of --pairs or --file" in r.output

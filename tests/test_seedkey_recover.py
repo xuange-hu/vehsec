@@ -164,3 +164,55 @@ def test_parse_pairs_rejects_bad_input():
         sk.parse_pairs("")
     with pytest.raises(ValueError):
         sk.parse_pairs("11223344")  # missing ':key'
+
+
+# --------------------------------------------------------------------------- #
+# recover_algorithm / predict — using the result programmatically
+# --------------------------------------------------------------------------- #
+def test_recover_algorithm_returns_a_usable_callable():
+    expr, fn = sk.recover_algorithm(_pairs(sk.algo_xor(0x3C)))
+    assert "xor" in expr or "^" in expr
+    assert fn(bytes.fromhex("00112233")) == sk.algo_xor(0x3C)(
+        bytes.fromhex("00112233")
+    )
+
+
+def test_recover_algorithm_generalises_to_an_unseen_seed():
+    """The whole point: a seed that was never observed must still solve."""
+    algo = sk.compose(sk.algo_rotl(3), sk.algo_xor(0xC7))
+    _expr, fn = sk.recover_algorithm(_pairs(algo))
+    fresh = bytes.fromhex("0f1e2d3c")
+    assert fresh not in [s for s, _ in _pairs(algo)]
+    assert fn(fresh) == algo(fresh)
+
+
+def test_recover_algorithm_is_registerable():
+    expr, fn = sk.recover_algorithm(_pairs(sk.algo_add(0x11)))
+    sk.register("captured_bench_ecu", fn)
+    try:
+        key = sk.solve("captured_bench_ecu", bytes.fromhex("AABBCCDD"))
+        assert key == sk.algo_add(0x11)(bytes.fromhex("AABBCCDD"))
+    finally:
+        sk._ALGORITHMS.pop("captured_bench_ecu")          # keep the global clean
+    assert expr
+
+
+def test_recover_algorithm_raises_when_nothing_fits():
+    pseudo = sk.algo_sha_keystream()                     # not a modelled family
+    pairs = [(bytes.fromhex(s), pseudo(bytes.fromhex(s))) for s in SEEDS[:2]]
+    with pytest.raises(LookupError):
+        sk.recover_algorithm(pairs)
+
+
+def test_recover_algorithm_rejects_empty_input():
+    with pytest.raises(ValueError):
+        sk.recover_algorithm([])
+
+
+def test_predict_solves_a_fresh_seed_and_reports_confidence():
+    algo = sk.compose(sk.algo_rotl(1), sk.algo_xor(0x5A))
+    out = sk.predict(_pairs(algo), bytes.fromhex("13572468"))
+    assert out["key"] == algo(bytes.fromhex("13572468")).hex()
+    assert out["confidence"] == "high"
+    assert out["pairs"] == 3
+    assert out["count"] == 1

@@ -5,7 +5,7 @@
 > **No car required.**
 
 [![CI](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml/badge.svg)](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-207%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-220%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-2026%20standard-green.svg)](https://modelcontextprotocol.io)
@@ -58,10 +58,10 @@ Copy `examples/mcp-config.json` into your agent's MCP config
 
 > "Run a UDS security access on the virtual ECU and show me the seed and key."
 
-Twenty-seven tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
+Twenty-eight tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
 `uds_security_access`, `uds_read_did`, `uds_read_dtcs`, `uds_clear_dtcs`,
 `uds_decode_dtc`, `uds_raw`, `seedkey_solve`, `seedkey_vendors`,
-`seedkey_recover`, `v2x_analyze`, `icsim_set_speed`, `icsim_tamper_demo`,
+`seedkey_recover`, `seedkey_predict`, `v2x_analyze`, `icsim_set_speed`, `icsim_tamper_demo`,
 `doip_simulate`, `doip_probe`, `dbc_decode`, `dbc_info`,
 `j1939_decode`, `j1939_encode`, `j1939_decode_name`, `j1939_decode_dm1`,
 `isotp_segment`, `isotp_decode`, `isotp_reassemble`, `isotp_explain`.
@@ -78,7 +78,9 @@ Twenty-seven tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
 - **Seed-Key solver** — pluggable algorithm registry (xor / add / rotate / bit-reverse /
   nibble-swap / endian-swap / CRC16-mixed / LFSR / SHA-256 keystream) for the UDS 27
   handshake, plus **algorithm recovery**: feed it observed `(seed, key)` pairs and it
-  brute-forces the transform family and solves for the parameters.
+  brute-forces the transform family and solves for the parameters — then
+  `seedkey_predict` / `seedkey.predict()` applies the result to a **fresh seed** you
+  never observed, which is how you unlock the next session without the OEM DLL.
 - **V2X / ECDSA** — detect nonce reuse and **recover the signer's private key**.
 - **ICSim control** — script speed / doors / turn signals on the virtual cluster.
 - **DoIP (ISO 13400)** — in-process virtual DoIP entity: vehicle discovery, routing
@@ -94,7 +96,7 @@ Twenty-seven tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
   (14), and decode the 3-byte code into its SAE J2012 identifier (`C10000` →
   `U0100`) with status flags and a short description.
 
-## Labs — 4 runnable Docker exercises
+## Labs — 5 runnable Docker exercises
 
 | Lab | Topic |
 |-----|-------|
@@ -102,11 +104,16 @@ Twenty-seven tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
 | [`labs/delta-forge-patchchain`](labs/delta-forge-patchchain) | OTA patch-chain diff reveals a hidden payload |
 | [`labs/v2x-ecdsa-nonce`](labs/v2x-ecdsa-nonce) | ECDSA nonce reuse → private-key recovery |
 | [`labs/sentinel2-can-statemachine`](labs/sentinel2-can-statemachine) | CAN state-machine injection / missing auth guard |
+| [`labs/seedkey-recover`](labs/seedkey-recover) | UDS 0x27 Seed-Key: reverse the algorithm from 5 sniffed pairs, then unlock with an unseen seed |
 
 ```bash
 python labs/v2x-ecdsa-nonce/solve.py --gen 20   # nonce reuse is the default:
                                                 # the first run recovers the key
 python labs/v2x-ecdsa-nonce/solve.py --gen 20 --no-reuse   # contrast: nothing found
+
+# Lab 5 needs no third-party package — pure stdlib + vehsec.seedkey
+python labs/seedkey-recover/solve.py            # 5 pairs -> one algorithm -> flag
+python labs/seedkey-recover/solve.py --pairs 1  # too little evidence -> 0x7F 27 35
 ```
 
 ## UDS in 30 seconds — no hardware
@@ -196,6 +203,23 @@ family `a*seed[i]+b`. Every result is checked against **all** supplied pairs, so
 three or more pairs usually collapse to a single answer. Same thing over MCP:
 `seedkey_recover(pairs="11223344:4B78691E,...")`.
 
+Recovery is only interesting if it ***generalises*** — a candidate that happens to
+fit one observation will fail on the next session. `seedkey predict` (CLI, MCP
+`seedkey_predict`, or `vehsec.seedkey.predict()`) applies the recovered algorithm
+to a seed you never captured:
+
+```console
+$ vehsec seedkey predict --pairs 11223344:4B78691E,a5b6c7d8:FFEC9D82,deadbeeF:84F7E4B5 \
+                         --seed 00112233
+algorithm key[i] = seed[i] ^ 0x5A
+key      5A4B7869  (high confidence, 3 pair(s))
+```
+
+[Lab 5](labs/seedkey-recover) turns this into a full exercise: five sniffed pairs,
+held-out seed, real `0x27 01/02` handshake, and a protected DID behind it —
+including the failure mode where too little evidence survives the fit but not the
+unlock (`--pairs 1`).
+
 ## DoIP & DBC in 30 seconds
 
 ```bash
@@ -222,7 +246,7 @@ vehsec dbc watch   --file examples/sample.dbc --log capture.log   # decode a who
 
 ```bash
 pip install -e ".[all]" && pip install pytest
-pytest -q      # 207 passed: core, CLI, MCP registration, all 4 labs, demo script
+pytest -q      # 220 passed: core, CLI, MCP registration, all 5 labs, demo script
 ```
 
 CI runs ruff + pytest on Python 3.11 / 3.12 / 3.13.

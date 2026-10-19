@@ -1,0 +1,7 @@
+services:
+  seedkey-recover:
+    build:
+      context: ../..
+      dockerfile: labs/seedkey-recover/Dockerfile
+    image: vehsec-lab-seedkey
+    command: ["python", "solve.py"]
