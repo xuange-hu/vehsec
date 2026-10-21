@@ -5,7 +5,7 @@
 > **No car required.**
 
 [![CI](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml/badge.svg)](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-220%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-277%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-2026%20standard-green.svg)](https://modelcontextprotocol.io)
@@ -39,6 +39,16 @@ from the older tooling.
 
 ## Quick start
 
+**Option A — one line, no clone, no venv** (best for handing the MCP server to an agent):
+
+```bash
+uvx --from "vehsec[mcp]" vehsec-mcp     # MCP server on stdio
+uvx --from "vehsec[cli]" vehsec --help  # CLI, no install left behind
+# no uv? pipx run --spec "vehsec[mcp]" vehsec-mcp
+```
+
+**Option B — clone and hack on it:**
+
 ```bash
 git clone https://github.com/xuange-hu/vehsec && cd vehsec
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
@@ -47,22 +57,38 @@ pip install -e ".[all]"
 vehsec --help             # CLI
 vehsec tui                # interactive TUI
 vehsec mcp                # MCP server (stdio) for AI agents
+vehsec mcp --check        # list the 31 tools an agent would get, then exit
 python examples/demo.py   # 5-step scripted demo, no hardware
 ```
 
 ## Let an AI agent drive it
 
-Copy `examples/mcp-config.json` into your agent's MCP config
-(`~/.workbuddy/mcp.json`, Cursor `~/.cursor/mcp.json`, or Claude Desktop's
-`claude_desktop_config.json`) and trust the server. Then just ask:
+Drop this into your agent's MCP config (`~/.workbuddy/mcp.json`, Cursor
+`~/.cursor/mcp.json`, Cline, or Claude Desktop's `claude_desktop_config.json`) and
+trust the server — no clone, no venv, `uv`/`uvx` fetches it on first launch:
+
+```json
+{
+  "mcpServers": {
+    "vehsec": {
+      "command": "uvx",
+      "args": ["--from", "vehsec[mcp]", "vehsec-mcp"]
+    }
+  }
+}
+```
+
+Already have `vehsec` installed? The equivalent is
+`{ "command": "vehsec", "args": ["mcp"] }` (`examples/mcp-config.json`). Then just ask:
 
 > "Run a UDS security access on the virtual ECU and show me the seed and key."
 
-Twenty-eight tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
+Thirty-one tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
 `uds_security_access`, `uds_read_did`, `uds_read_dtcs`, `uds_clear_dtcs`,
 `uds_decode_dtc`, `uds_raw`, `seedkey_solve`, `seedkey_vendors`,
 `seedkey_recover`, `seedkey_predict`, `v2x_analyze`, `icsim_set_speed`, `icsim_tamper_demo`,
-`doip_simulate`, `doip_probe`, `dbc_decode`, `dbc_info`,
+`doip_simulate`, `doip_probe`, `doip_tls_audit`, `doip_tls_probe`, `doip_tls_simulate`,
+`dbc_decode`, `dbc_info`,
 `j1939_decode`, `j1939_encode`, `j1939_decode_name`, `j1939_decode_dm1`,
 `isotp_segment`, `isotp_decode`, `isotp_reassemble`, `isotp_explain`.
 
@@ -85,6 +111,11 @@ Twenty-eight tools are exposed: `can_send`, `can_fuzz`, `can_analyze`,
 - **ICSim control** — script speed / doors / turn signals on the virtual cluster.
 - **DoIP (ISO 13400)** — in-process virtual DoIP entity: vehicle discovery, routing
   activation, and UDS-over-Ethernet (read the VIN) with no hardware.
+- **DoIP over TLS** — the ISO 13400-2 secure diagnostics channel (TCP 3496), plus a
+  **certificate audit engine**: a from-scratch, zero-dependency X.509 reader that also
+  verifies RSA PKCS#1 v1.5 signatures in pure Python, so "self-signed" is proven rather
+  than guessed. Grades key size, signature hash, validity, SAN/hostname and CA chain,
+  and probes which TLS versions a gateway still accepts.
 - **DBC parsing** — pure stdlib: Intel/Motorola endianness, signed values,
   factor/offset scaling, value tables, multiplexed signals.
 - **J1939 (trucks/buses)** — 29-bit id ↔ PGN/priority/source (PDU1 & PDU2), NAME
@@ -231,6 +262,31 @@ vehsec dbc encode  --file examples/sample.dbc --id 0x100 --set Speed=41.5
 vehsec dbc watch   --file examples/sample.dbc --log capture.log   # decode a whole capture
 ```
 
+## DoIP TLS / gateway certificates in 30 seconds
+
+```bash
+# 1. a TLS DoIP gateway in-process: handshake, routing activation, UDS, then audit
+vehsec doip tls-simulate
+#   negotiated TLSv1.3 / TLS_AES_256_GCM_SHA384
+#   UDS 22 F190 -> 62f1905756575a5a5a314a5a5857303030303031
+#   STRONG score 100/100
+
+# 2. audit a certificate you captured (PEM or DER)
+vehsec doip tls-audit --file gateway.pem --ca oem-ca.pem --hostname gateway.local
+#   REJECT score 10/100 grade F
+#     [CRITICAL] RSA key is only 1024 bits
+#     [HIGH    ] signed with SHA1 (sha1WithRSAEncryption)
+#     [MEDIUM  ] no subjectAltName extension; the CN is the only identity
+
+# 3. audit a live gateway: TLS versions + cert + is plaintext 13400 still open?
+vehsec doip tls-probe --host 192.0.2.10
+```
+
+The interesting finding is usually the last one: **a gateway whose plaintext port 13400
+still accepts a routing activation makes its own TLS listener decorative.** The audit
+also tries each TLS version on its own, which is how you find a gateway that still
+answers TLS 1.0.
+
 ## Docs
 
 | Doc | What |
@@ -246,7 +302,7 @@ vehsec dbc watch   --file examples/sample.dbc --log capture.log   # decode a who
 
 ```bash
 pip install -e ".[all]" && pip install pytest
-pytest -q      # 220 passed: core, CLI, MCP registration, all 5 labs, demo script
+pytest -q      # 261 passed: core, CLI, MCP registration, all 5 labs, demo script
 ```
 
 CI runs ruff + pytest on Python 3.11 / 3.12 / 3.13.

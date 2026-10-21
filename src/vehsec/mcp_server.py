@@ -326,6 +326,60 @@ def doip_probe(host: str, target: str = "0x1000", service: str = "22F190",
 
 
 @mcp.tool()
+def doip_tls_audit(file: str, ca: str = "", hostname: str = "",
+                   public_pki: bool = False) -> str:
+    """Audit a DoIP gateway certificate (PEM or DER file) for weak crypto.
+
+    Reports the key size, signature hash, validity window, subjectAltName and
+    self-signed status, each graded critical/high/medium/low with a 0-100 score.
+    Pass `ca` (CA certificate path) to verify the chain, and `hostname` to check
+    the certificate actually covers the gateway you connected to."""
+    from . import doip_tls as dt
+
+    cert = dt.load_certificate(file)
+    issuer = dt.load_certificate(ca) if ca else None
+    return json.dumps(
+        dt.audit_certificate(
+            cert, issuer=issuer, hostname=hostname or None, private_pki=not public_pki
+        )
+    )
+
+
+@mcp.tool()
+def doip_tls_probe(host: str, port: int = 3496, plaintext_port: int = 13400) -> str:
+    """Audit a live DoIP gateway: which TLS versions it accepts, the certificate
+    it presents, and whether the plaintext port 13400 still allows diagnostics.
+    A gateway that answers plaintext 13400 makes its own TLS listener pointless."""
+    from . import doip_tls as dt
+
+    return json.dumps(dt.audit_endpoint(host, tls_port=port, plaintext_port=plaintext_port))
+
+
+@mcp.tool()
+def doip_tls_simulate(vin: str = "WVWZZZ1JZXW000001") -> str:
+    """Spin up an in-process DoIP gateway *over TLS*, complete the handshake,
+    exchange a UDS request, then audit the certificate it presented. No vehicle,
+    no hardware, no network."""
+    from . import doip as dp
+    from . import doip_tls as dt
+
+    with dp.DoipSimulator(vin=vin, host="127.0.0.1", tls=True) as sim:
+        with dp.DoipClient(sim.host, sim.tcp_port, timeout=5.0, tls=True) as c:
+            version, cipher = c.tls_version, c.tls_cipher
+            activation = c.routing_activation()
+            vin_resp = c.request(sim.logical_address, bytes.fromhex("22F190"))
+            cert = c.peer_certificate()
+    return json.dumps({
+        "tls_version": version,
+        "cipher": cipher,
+        "routing_activation": activation,
+        "uds_22_f190": vin_resp.hex(),
+        "vin_ascii": vin_resp[3:].decode("ascii", "replace"),
+        "audit": dt.audit_certificate(cert) if cert else None,
+    })
+
+
+@mcp.tool()
 def dbc_decode(file: str, frame_id: str, data_hex: str, raw: bool = False) -> str:
     """Decode a CAN frame with a DBC database into named physical signals.
     frame_id like '0x1A4', data_hex like '1A02'. raw=true returns integers."""
@@ -345,6 +399,26 @@ def dbc_info(file: str, search: str = "") -> str:
     database = parse_file(file)
     messages = database.search(search) if search else list(database)
     return json.dumps([m.to_dict() for m in messages])
+
+
+async def _tool_manifest() -> list:
+    tools = await mcp.list_tools()
+    rows = []
+    for t in tools:
+        desc = (getattr(t, "description", "") or "").strip()
+        rows.append({"name": t.name, "description": " ".join(desc.split())})
+    return sorted(rows, key=lambda r: r["name"])
+
+
+def tool_manifest() -> list:
+    """Return ``[{"name": ..., "description": ...}, ...]`` for every registered tool.
+
+    Lets ``vehsec mcp --check`` report what an agent would actually get without
+    opening the stdio transport, which is also what CI asserts against.
+    """
+    import asyncio
+
+    return asyncio.run(_tool_manifest())
 
 
 def run() -> None:

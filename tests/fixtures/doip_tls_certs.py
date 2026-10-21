@@ -1,0 +1,100 @@
+"""X.509 fixtures for the DoIP TLS tests.
+
+Four certificates, generated once with OpenSSL 3.5 (and `cryptography`
+for the expired one) so the parser is checked against real DER rather
+than hand-built bytes. They are public data: the private keys were
+discarded and are not needed for parsing or auditing.
+
+  gateway : RSA-2048 / SHA-256 / CA-signed / SAN dns+ip / CA:FALSE   good
+  ca      : RSA-2048 / SHA-256 / self-signed / CA:TRUE
+  weak    : RSA-1024 / SHA-1   / self-signed / CN=IP / no SAN        bad
+  expired : RSA-2048 / SHA-256 / self-signed / valid 2019-01..2020-01
+"""
+
+from __future__ import annotations
+
+GATEWAY_PEM = (
+    '-----BEGIN CERTIFICATE-----\n'
+    'MIIDsTCCApmgAwIBAgIUZ/A5iKc2DqyD4MonOzk1yLhyLfMwDQYJKoZIhvcNAQEL\n'
+    'BQAwOjELMAkGA1UEBhMCREUxETAPBgNVBAoMCEJlbmNoLUNBMRgwFgYDVQQDDA92\n'
+    'ZWhzZWMtYmVuY2gtY2EwHhcNMjYxMDIwMDAwNTMxWhcNMjcxMDIwMDAwNTMxWjBL\n'
+    'MQswCQYDVQQGEwJERTESMBAGA1UECgwJQmVuY2gtT0VNMRAwDgYDVQQLDAdHYXRl\n'
+    'd2F5MRYwFAYDVQQDDA1nYXRld2F5LmxvY2FsMIIBIjANBgkqhkiG9w0BAQEFAAOC\n'
+    'AQ8AMIIBCgKCAQEA5Fpg7E2jmfSz9JeH3W+dkQAKNWMb/sQ/NlOrS3U+EAADSX22\n'
+    'GQ7jTWlvMfUKBymPPO/fKwv0I2lkd5/c2GSH3VEEkhfSDWWXUSWvkY1r8E4AVkAq\n'
+    'xyKo3/6Ynwqn499mc8RMCJv5QajjSxLZr/V66uLbB6dfGWwWYW86Tffrmw81hH4b\n'
+    '1X1tsHH3L6DeY9O+hvI0hCsRJqut3DPAazMvtZ8otl1j8/QlZMuzUc+KnfjLkjlA\n'
+    'Y/yok9LjEGUJWooxJ1PNdVbYpR+fTSOLnp6QzfGSmP5pvgl8TZ8vur6Y0fNIrrxw\n'
+    'JMEAqGLJwMP5v3oJlybWseYfyVvikgqH7hxzDwIDAQABo4GdMIGaMCsGA1UdEQQk\n'
+    'MCKCDWdhdGV3YXkubG9jYWyCC2VjdTAxLmxvY2FshwR/AAABMAkGA1UdEwQCMAAw\n'
+    'CwYDVR0PBAQDAgWgMBMGA1UdJQQMMAoGCCsGAQUFBwMBMB0GA1UdDgQWBBTBLqj4\n'
+    'VKH68TLmMWXuRyY0SCKY1DAfBgNVHSMEGDAWgBQh5cvPU4fLnJUQp79ks2Hk9RZC\n'
+    'VTANBgkqhkiG9w0BAQsFAAOCAQEAvNAKu1GoHkzbpCZsLJDex6dhPvlCP6Dz9qmL\n'
+    'HZS25Zr+WkW8LIvBqgwuNvQrPhL2Wlj3y/BkTqfcbDRZ3siQ50u7oZ4FXhcc+wsQ\n'
+    'A9cg1zd8zH8ypvDZgD8+9sMTpzYCOJ/v1J20TuiWm+HBmdVo5riNEMbdCJUqfbOc\n'
+    'LYhGOpq5hk3jOh/IBU3p/aYZgw5y0q4yAVwvQd+lGc3XpS7qrJDpmrVR2RU03007\n'
+    'R/VKvlUiTg4C6feO0nGFv2TBNJThClNE46XoC6UVe6/09x9gmkvVxqu0Q+popTJc\n'
+    'uCfp0eUg0/rnWd891g6xSTye9l3w+uBenplzsDOUy2KrJ+JM3A==\n'
+    '-----END CERTIFICATE-----\n'
+)
+
+CA_PEM = (
+    '-----BEGIN CERTIFICATE-----\n'
+    'MIIDVTCCAj2gAwIBAgIUbOBYCEuDYHshnjmgph4+8RsfFSIwDQYJKoZIhvcNAQEL\n'
+    'BQAwOjELMAkGA1UEBhMCREUxETAPBgNVBAoMCEJlbmNoLUNBMRgwFgYDVQQDDA92\n'
+    'ZWhzZWMtYmVuY2gtY2EwHhcNMjYxMDIwMDAwNTMwWhcNMzYxMDE3MDAwNTMwWjA6\n'
+    'MQswCQYDVQQGEwJERTERMA8GA1UECgwIQmVuY2gtQ0ExGDAWBgNVBAMMD3ZlaHNl\n'
+    'Yy1iZW5jaC1jYTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANKZ38YT\n'
+    'jgz5Z+fWC8bwxfU21hLGUXf/BWhqpdfzTPlqziaCKs3uwUGcRfKEGnykFIQ3JywY\n'
+    'sint6+v8m7Xeu0mWBGBzVBz1CUChwTef8ENHxkdABRH92WkXayCj6BvlKv7UTWVM\n'
+    'dMmkfNeeoB43l1vcfxboWwMKBwcaJR4uWM7dtofgNAMvsQQIlWj5NKmrYdVpdbQ3\n'
+    'aOO5Ee1jJl/8WIfqQE5EktClJLA8CKoZMlTIRwGl7TgiRLKE3QZCJR08wkkQ21xz\n'
+    'Cf9NkbicGkItjjqJV3DLXBQj4PjjEO50tNCGAemJ4LKTkgOOfoqW7mO0wOmdvjEh\n'
+    'BjLW24lXViNtYIECAwEAAaNTMFEwHQYDVR0OBBYEFCHly89Th8uclRCnv2SzYeT1\n'
+    'FkJVMB8GA1UdIwQYMBaAFCHly89Th8uclRCnv2SzYeT1FkJVMA8GA1UdEwEB/wQF\n'
+    'MAMBAf8wDQYJKoZIhvcNAQELBQADggEBAGR4lBfm9xvCF8RM2kYADdlRjVqbuOWd\n'
+    '9Jd5gCGYS2IJao6B0eYKPi9KBp436ntuahMCvmJdUuEX8mvdw8E4FDx7cpzjj2Ng\n'
+    'CMDilfRoxzgkuLHQYd6XF/3yim9NuBFhiAu1wKBzUxDrBlZq5xkDo2VJvOH0lgKY\n'
+    'MDikBjpqCn0JLC56fuqug7J9NOekOZGJw0fK3rj+qThK419T+UTFYodgVE1858Si\n'
+    'H4R+n98dI6hBI3MNOtQNQun/AGMwT9zPP4ef55YaAU+15OqOk/Nf7NmvJgsr5Zcv\n'
+    'VLT2Spyx/4K3BBad3pZt5NTmTPx/nV2UzXXDz4c5iFw74mdKGguo60E=\n'
+    '-----END CERTIFICATE-----\n'
+)
+
+WEAK_PEM = (
+    '-----BEGIN CERTIFICATE-----\n'
+    'MIICCjCCAXOgAwIBAgIUFUsuKXMmCNL4hB1tvB87q2cN++4wDQYJKoZIhvcNAQEF\n'
+    'BQAwFzEVMBMGA1UEAwwMMTkyLjE2OC4xLjEwMB4XDTI2MTAyMDAwMDUzMVoXDTI2\n'
+    'MTExOTAwMDUzMVowFzEVMBMGA1UEAwwMMTkyLjE2OC4xLjEwMIGfMA0GCSqGSIb3\n'
+    'DQEBAQUAA4GNADCBiQKBgQCiqhMp1KJGP7D8zlJeAEDMBhFqVuIzGPu9fn75Gzuw\n'
+    'H8zMFZEpOc+bFTB8vNyiWnhKo6IwAFFF+lJo9vL3dM5rxVYhtX7MshiLphq/Gwp2\n'
+    'wRL37oel+o1ml2VqR75rU+Q523vyiVwMCZhAFYQEfpJvA73QohCC/2ifDNJVmkx8\n'
+    'SwIDAQABo1MwUTAdBgNVHQ4EFgQUv9tbmlOFuKTU6Ah9yoHj/BJ7eAYwHwYDVR0j\n'
+    'BBgwFoAUv9tbmlOFuKTU6Ah9yoHj/BJ7eAYwDwYDVR0TAQH/BAUwAwEB/zANBgkq\n'
+    'hkiG9w0BAQUFAAOBgQA3vV1ezMCPK1SIESEaX4GbXC3D8dMKin21Ae8tCQwBl0S8\n'
+    'JmND9B31lO++rSooc4/RNCthFbhgA/h8BGFYHFJBTRVpXdFRlOPP3FwIfLkq/yqC\n'
+    'xo+c0nUBq+NW99wBBQEX2ujJcbEef9KqTab96lFw67MWkVpPgojB3doixmZpEg==\n'
+    '-----END CERTIFICATE-----\n'
+)
+
+EXPIRED_PEM = (
+    '-----BEGIN CERTIFICATE-----\n'
+    'MIIDDTCCAfWgAwIBAgICEjQwDQYJKoZIhvcNAQELBQAwPzEZMBcGA1UEAwwQZXhw\n'
+    'aXJlZC1ndy5sb2NhbDEiMCAGCSqGSIb3DQEJARYTZGV2QGV4YW1wbGUuaW52YWxp\n'
+    'ZDAeFw0xOTAxMDEwMDAwMDBaFw0yMDAxMDEwMDAwMDBaMD8xGTAXBgNVBAMMEGV4\n'
+    'cGlyZWQtZ3cubG9jYWwxIjAgBgkqhkiG9w0BCQEWE2RldkBleGFtcGxlLmludmFs\n'
+    'aWQwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDbAtG5dgJ8Yapf/z9d\n'
+    'j3XqEIwh+MGXNH4kaDl+L2VwlVLos55P6xtygflPdDEARkAfINg7PzJOz6MZgmaS\n'
+    '+XTJGtv8ZcIgCcOhIbkgnFdX6chZET+MwbO6nEv01AwWbHZQt9WSk7ofP0eVRzQN\n'
+    'IpYT1mLWeXQzQ3qMba/7kvMFM6sdOTBrSVUrC2nvitzRSd6cXNxUj/SRWXoxsPqS\n'
+    '2C/o5nQsHNyF5pVvBx1jldN6qvFY5AJ2tjLCrJrJhIAJ7aXYbVmS1labKNLTll1R\n'
+    'F+uka6xIlPYAFKRC9dy72rePxdEPvFFXPslHRy7ICxOZ+LR9A70yb+L2DqumjlMW\n'
+    'ItmTAgMBAAGjEzARMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEB\n'
+    'ADa7dwIoufPnQ9JUit7xhi0b4znqEEl7gMOJohXKIYM78EFzmxCevhbs4pEPqFw2\n'
+    'TygBaiaS7LsZNu/eR0ag3NGpDVaR8xuhRbs600xvvm4UTKotDy4NLF/wWlEsQ/Ur\n'
+    'RKnlWAyCa5rZqrPey3FflmTwfbY4Gp12uzZA77mMOpTNY9W8T7bxbXdc+0p+Tr4U\n'
+    '//0e/frcOm2pUwgmbNA2GQcetIJ4KyWTE4nMMJcj82RNQekTEOh+PzxJuY/qPFJr\n'
+    'ep/9pzulaWKPtnaUDdqvjAZ0WucVzTYJJrFNXkFyYA+laEwdcxfG48XsMa6T2HYn\n'
+    'y8bzlpdGTT4oe+/1e6gjwbA=\n'
+    '-----END CERTIFICATE-----\n'
+)

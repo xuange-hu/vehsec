@@ -4,7 +4,7 @@ Core library exposing CAN / UDS / Seed-Key / V2X / ICSim / DoIP / DBC / J1939
 capabilities. All modules degrade gracefully when optional dependencies are missing.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from . import can_bus
 from . import uds

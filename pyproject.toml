@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vehsec"
-version = "0.2.0"
+version = "0.3.0"
 description = "Vehicle security toolkit: CAN/UDS/Seed-Key/V2X/ICSim as a CLI, TUI and MCP server"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,10 +29,16 @@ cli = ["click>=8.1", "rich>=13.7"]
 tui = ["textual>=0.60"]
 mcp = ["mcp>=1.2,<2"]
 dev = ["pytest>=8.0", "ruff>=0.9", "pre-commit>=4.0", "Pillow>=10.0"]
-all = ["click>=8.1", "rich>=13.7", "textual>=0.60", "mcp>=1.2,<2"]
+# only needed to *mint* key material for the TLS simulator; parsing and
+# auditing certificates stays dependency-free on purpose
+tls = ["cryptography>=42"]
+all = ["click>=8.1", "rich>=13.7", "textual>=0.60", "mcp>=1.2,<2", "cryptography>=42"]
 
 [project.scripts]
 vehsec = "vehsec.cli:main"
+# dedicated entry point so `uvx --from vehsec[mcp] vehsec-mcp` works with no
+# clone, no venv and no `python -m` incantation
+vehsec-mcp = "vehsec.mcp_server:run"
 
 [project.urls]
 Homepage = "https://github.com/xuange-hu/vehsec"

@@ -415,14 +415,107 @@ def doip_simulate(vin, host):
 @click.option("--port", default=13400)
 @click.option("--target", default="0x1000", help="ECU logical address")
 @click.option("--service", default="22F190", help="UDS request hex, e.g. 22F190")
-def doip_probe(host, port, target, service):
+@click.option("--tls", is_flag=True, help="wrap the connection in TLS")
+@click.option("--ca", "ca_file", default=None, help="CA bundle to verify against")
+def doip_probe(host, port, target, service, tls, ca_file):
     """Routing-activate and send one raw UDS request over DoIP."""
     from . import doip as dp
 
-    with dp.DoipClient(host, port, timeout=5.0) as c:
+    with dp.DoipClient(host, port, timeout=5.0, tls=tls, ca_file=ca_file) as c:
+        if tls:
+            console.print(f"[dim]TLS {c.tls_version} / {c.tls_cipher}[/]")
         console.print(c.routing_activation())
         resp = c.request(int(target, 16), bytes.fromhex(service))
         console.print(f"[green]response[/] {resp.hex()}")
+
+
+@doip.command("tls-audit")
+@click.option("--file", "file_", required=True, help="certificate file (PEM or DER)")
+@click.option("--ca", "ca_file", default=None, help="CA certificate to check the chain against")
+@click.option("--hostname", default=None, help="expect the certificate to cover this name")
+@click.option("--public-pki", is_flag=True, help="grade it as a publicly-trusted certificate")
+@click.option("--json", "as_json", is_flag=True)
+def doip_tls_audit(file_, ca_file, hostname, public_pki, as_json):
+    """Audit a DoIP gateway certificate: key, signature, validity, names."""
+    from . import doip_tls as dt
+
+    cert = dt.load_certificate(file_)
+    issuer = dt.load_certificate(ca_file) if ca_file else None
+    report = dt.audit_certificate(
+        cert, issuer=issuer, hostname=hostname, private_pki=not public_pki
+    )
+    if as_json:
+        console.print_json(json.dumps(report))
+        return
+    colour = {"STRONG": "green", "ACCEPTABLE": "green", "WEAK": "yellow"}.get(
+        str(report["verdict"]), "red"
+    )
+    console.print(f"[{colour}]{report['verdict']}[/] "
+                  f"[dim]score {report['score']}/100 grade {report['grade']}[/]")
+    console.print(escape(dt.format_report(report, with_verdict=False)))
+
+
+@doip.command("tls-probe")
+@click.option("--host", required=True)
+@click.option("--port", default=3496, help="TLS DoIP port (ISO 13400-2 uses 3496)")
+@click.option("--plaintext-port", default=13400)
+@click.option("--hostname", default=None)
+@click.option("--json", "as_json", is_flag=True)
+def doip_tls_probe(host, port, plaintext_port, hostname, as_json):
+    """Audit a live gateway: TLS versions, certificate and the plaintext port."""
+    from . import doip_tls as dt
+
+    report = dt.audit_endpoint(
+        host, tls_port=port, plaintext_port=plaintext_port, hostname=hostname
+    )
+    if as_json:
+        console.print_json(json.dumps(report))
+        return
+    tls = report["tls"]
+    if tls["tls_available"]:
+        console.print(f"[green]TLS[/] {tls['negotiated_version']} / {tls['cipher']}")
+        console.print(f"accepted versions: {', '.join(tls['accepted_versions']) or 'none'}")
+    else:
+        console.print(f"[red]no TLS service on {host}:{port}[/] ({tls['error']})")
+    if tls["plaintext_doip"]:
+        console.print(
+            f"[red]plaintext DoIP on {host}:{plaintext_port} accepted a routing "
+            "activation — the TLS listener can simply be skipped[/]"
+        )
+    colour = {"STRONG": "green", "ACCEPTABLE": "green", "WEAK": "yellow"}.get(
+        str(report["verdict"]), "red"
+    )
+    console.print(f"[{colour}]{report['verdict']}[/] [dim]score {report['score']}/100[/]")
+    for item in report["findings"]:
+        console.print(f"  [{item['severity'].upper():<8}] {escape(item['message'])}")
+
+
+@doip.command("tls-simulate")
+@click.option("--vin", default="WVWZZZ1JZXW000001")
+@click.option("--host", default="127.0.0.1")
+def doip_tls_simulate(vin, host):
+    """Run a DoIP gateway over TLS in-process and audit it end-to-end."""
+    from . import doip as dp
+    from . import doip_tls as dt
+
+    with dp.DoipSimulator(vin=vin, host=host, tls=True) as sim:
+        console.print(f"[dim]TLS simulator tcp={sim.tcp_port} udp={sim.udp_port}[/]")
+        with dp.DoipClient(sim.host, sim.tcp_port, timeout=5.0, tls=True) as c:
+            console.print(f"[green]negotiated[/] {c.tls_version} / {c.tls_cipher}")
+            console.print(c.routing_activation())
+            vin_resp = c.request(sim.logical_address, bytes.fromhex("22F190"))
+            console.print(f"[green]UDS 22 F190 ->[/] {vin_resp.hex()}")
+            cert = c.peer_certificate()
+        if cert is None:
+            console.print("[yellow]peer did not present a certificate[/]")
+            return
+        report = dt.audit_certificate(cert)
+        console.print(
+            f"[{ 'green' if report['verdict'] == 'STRONG' else 'yellow'}]"
+            f"{report['verdict']}[/] [dim]score {report['score']}/100[/]"
+        )
+        for item in report["findings"]:
+            console.print(f"  [{item['severity'].upper():<8}] {escape(item['message'])}")
 
 
 # --------------------------------------------------------------------------- #
@@ -640,10 +733,29 @@ def tui():
 
 
 @cli.command()
-def mcp():
-    """Launch the MCP server (stdio) for AI coding agents."""
-    from .mcp_server import run
+@click.option("--check", is_flag=True,
+              help="Print the tools an AI agent would get, then exit (no stdio loop).")
+def mcp(check):
+    """Launch the MCP server (stdio) for AI coding agents.
 
+    \b
+    vehsec mcp            # start the stdio server (what your agent launches)
+    vehsec mcp --check    # verify it would start, and see the tool list
+    """
+    from .mcp_server import run, tool_manifest
+
+    if check:
+        rows = tool_manifest()
+        table = Table(title=f"vehsec MCP — {len(rows)} tools", title_justify="left")
+        table.add_column("#", style="dim", width=4)
+        table.add_column("tool", style="cyan")
+        table.add_column("what the agent can ask for")
+        for i, row in enumerate(rows, 1):
+            table.add_row(str(i), row["name"], escape(row["description"][:88]))
+        console.print(table)
+        console.print("\n[dim]Add to your agent's MCP config:[/dim] "
+                      '{ "command": "vehsec", "args": ["mcp"] }')
+        return
     run()
 
 

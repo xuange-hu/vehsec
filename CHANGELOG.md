@@ -3,7 +3,34 @@
 All notable changes to `vehsec` are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning follows SemVer.
 
-## [Unreleased] — v0.2.0
+## [0.3.0] — 2026-10-21
+
+### Added
+- **DoIP over TLS (ISO 13400-2) and a certificate audit engine** — `src/vehsec/doip_tls.py`:
+  - A **zero-dependency X.509 DER reader** plus a **pure-Python RSA PKCS#1 v1.5
+    signature verifier**, so "self-signed" is *proven* by arithmetic rather than
+    guessed from a `subject == issuer` string compare. Only *minting* key material
+    needs `cryptography`; parsing and auditing never do.
+  - `audit_certificate()` grades key size, signature hash, validity window,
+    SAN/hostname match and CA chain into `critical/high/medium/low/info` findings
+    with a 0–100 score; `probe_tls()` tests one TLS version at a time so a gateway
+    that still answers TLS 1.0 is visible; `audit_endpoint()` also checks whether
+    plaintext TCP 13400 still accepts a routing activation — if it does, the TLS
+    listener is decorative.
+  - CLI: `vehsec doip tls-simulate` / `tls-audit` / `tls-probe`.
+    MCP: `doip_tls_simulate`, `doip_tls_audit`, `doip_tls_probe` (31 tools, up from 28).
+- **Zero-friction MCP install** — `vehsec-mcp` is now a dedicated console script, so
+  `uvx --from "vehsec[mcp]" vehsec-mcp` (or `pipx run`) needs no clone and no venv.
+  Optional extras gained a `tls` extra; `[all]` pulls `cryptography>=42`.
+- `vehsec mcp --check` prints the tool manifest an agent would receive and exits,
+  without opening the stdio transport.
+
+### Fixed
+- Tests now pin the packaging surface: `tests/test_entrypoints.py` asserts the
+  console-script targets resolve, that `@mcp.tool()` count equals the live manifest,
+  and that `src/vehsec/__init__.py` and `pyproject.toml` agree on the version.
+
+## [0.2.0] — 2026-10-19
 
 ### Added
 - **`labs/seedkey-recover` — Lab 5, UDS 0x27 Seed-Key recovery** (zero third-party

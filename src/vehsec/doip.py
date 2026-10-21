@@ -21,8 +21,12 @@ Everything here targets your own bench/lab equipment or an authorized target.
 
 from __future__ import annotations
 
+import os
+import shutil
 import socket
+import ssl
 import struct
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -306,18 +310,83 @@ class DoipClient:
         port: int = DOIP_PORT,
         source_address: int = 0x0E00,
         timeout: float = 5.0,
+        tls: bool = False,
+        ca_file: Optional[str] = None,
+        server_hostname: Optional[str] = None,
+        min_tls_version: Optional[str] = "TLSv1.2",
     ) -> None:
         self.host = host
         self.port = port
         self.source_address = source_address
         self.timeout = timeout
+        self.tls = tls
+        self.ca_file = ca_file
+        self.server_hostname = server_hostname
+        self.min_tls_version = min_tls_version
         self.sock: Optional[socket.socket] = None
         self.entity_address: Optional[int] = None
         self._vin: Optional[str] = None
 
+    # -- TLS ---------------------------------------------------------------- #
+    def _client_context(self) -> ssl.SSLContext:
+        """Build the client context.
+
+        Without ``ca_file`` we deliberately disable verification: a bench
+        gateway hands out a self-signed certificate, and an audit tool has to
+        complete the handshake to *see* that certificate. Pass ``ca_file`` (and
+        inspect :meth:`peer_certificate`) when you want a real check.
+        """
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        if self.ca_file:
+            ctx.load_verify_locations(self.ca_file)
+            ctx.verify_mode = ssl.CERT_REQUIRED
+            ctx.check_hostname = True
+        else:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+        if self.min_tls_version:
+            wanted = getattr(ssl.TLSVersion, self.min_tls_version.replace(".", "_"), None)
+            if wanted is not None:
+                try:
+                    ctx.minimum_version = wanted
+                except ValueError:  # pragma: no cover - openssl built without it
+                    pass
+        return ctx
+
+    @property
+    def tls_version(self) -> Optional[str]:
+        """The TLS version actually negotiated, or ``None`` on a plaintext link."""
+        if isinstance(self.sock, ssl.SSLSocket):
+            return self.sock.version()
+        return None
+
+    @property
+    def tls_cipher(self) -> Optional[str]:
+        if isinstance(self.sock, ssl.SSLSocket):
+            cipher = self.sock.cipher()
+            return cipher[0] if cipher else None
+        return None
+
+    def peer_certificate(self):
+        """The peer certificate as a :class:`vehsec.doip_tls.Certificate`."""
+        if not isinstance(self.sock, ssl.SSLSocket):
+            return None
+        der = self.sock.getpeercert(binary_form=True)
+        if not der:
+            return None
+        from .doip_tls import parse_certificate  # local: doip_tls imports doip too
+
+        return parse_certificate(der)
+
     # -- lifecycle ---------------------------------------------------------- #
     def connect(self) -> "DoipClient":
-        self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        raw = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        if self.tls:
+            self.sock = self._client_context().wrap_socket(
+                raw, server_hostname=self.server_hostname or self.host
+            )
+        else:
+            self.sock = raw
         return self
 
     def close(self) -> None:
@@ -443,14 +512,43 @@ class DoipSimulator:
     timeout: float = 5.0
     tcp_port: int = 0
     udp_port: int = 0
+    #: serve the TCP side over TLS (ISO 13400-2 secure diagnostics, usually 3496)
+    tls: bool = False
+    #: PEM strings; generated on the fly when ``tls`` is set and none supplied
+    cert_pem: Optional[str] = field(default=None, repr=False)
+    key_pem: Optional[str] = field(default=None, repr=False)
     _tcp: Optional[socket.socket] = field(default=None, repr=False)
     _udp: Optional[socket.socket] = field(default=None, repr=False)
     _stop: threading.Event = field(default_factory=threading.Event, repr=False)
     _threads: List[threading.Thread] = field(default_factory=list, repr=False)
+    _tmpdir: Optional[str] = field(default=None, repr=False)
+    _tls_ctx: object = field(default=None, repr=False)
+
+    # -- TLS ---------------------------------------------------------------- #
+    def _server_context(self) -> ssl.SSLContext:
+        from .doip_tls import make_self_signed  # local: doip_tls imports doip too
+
+        if not self.cert_pem or not self.key_pem:
+            self.cert_pem, self.key_pem = make_self_signed(
+                common_name=self.vin[:17] or "vehsec-gateway",
+                san_dns=["gateway.local"],
+                san_ip=[self.host] if self.host != "127.0.0.1" else ["127.0.0.1"],
+            )
+        self._tmpdir = tempfile.mkdtemp(prefix="vehsec-doip-tls-")
+        cert_path = os.path.join(self._tmpdir, "gateway.pem")
+        key_path = os.path.join(self._tmpdir, "gateway.key")
+        with open(cert_path, "w", encoding="ascii") as handle:
+            handle.write(self.cert_pem)
+        with open(key_path, "w", encoding="ascii") as handle:
+            handle.write(self.key_pem)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert_path, key_path)
+        return ctx
 
     # -- lifecycle ---------------------------------------------------------- #
     def start(self) -> "DoipSimulator":
         self._stop.clear()
+        self._tls_ctx = self._server_context() if self.tls else None
 
         self._udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -482,6 +580,10 @@ class DoipSimulator:
                 except OSError:
                     pass
         self._tcp = self._udp = None
+        self._tls_ctx = None
+        if self._tmpdir:
+            shutil.rmtree(self._tmpdir, ignore_errors=True)
+            self._tmpdir = None
 
     def __enter__(self) -> "DoipSimulator":
         return self.start()
@@ -534,8 +636,16 @@ class DoipSimulator:
                 continue
             threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
 
-    def _serve(self, conn: socket.socket) -> None:
+    def _serve(self, raw_conn: socket.socket) -> None:
+        conn: socket.socket = raw_conn
         try:
+            if self._tls_ctx is not None:
+                # A gateway that cannot complete the handshake must not take the
+                # rest of the loop down with it.
+                try:
+                    conn = self._tls_ctx.wrap_socket(raw_conn, server_side=True)
+                except (ssl.SSLError, OSError):
+                    return
             conn.settimeout(self.timeout)
             source = None
             while not self._stop.is_set():

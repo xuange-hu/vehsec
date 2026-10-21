@@ -32,6 +32,16 @@ jobs:
       - name: Tests
         run: pytest -q
 
+      # The README tells people to install the console scripts and run them.
+      # If an entry point stops resolving, no behavioural test catches it.
+      - name: Console scripts / MCP manifest
+        run: |
+          set -e
+          vehsec --help >/dev/null
+          vehsec mcp --check | tee /tmp/manifest.txt
+          grep -q "31 tools" /tmp/manifest.txt
+          python -c "from vehsec.mcp_server import run; assert callable(run)"
+
       # Really run every solver: a lab that stops working is a broken README.
       # v2x writes a signature dump, so point it outside the working tree.
       - name: Labs (all five solvers must succeed)

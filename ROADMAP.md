@@ -67,7 +67,11 @@
       `docs/social-preview.png`（1280×640，Settings → Social preview 上传）
 - [x] Linux vcan0 + ICSim + UDSim 一键脚本 `scripts/setup_vcan.sh`
 - [x] 发布文案 `docs/promotion.md`（Show HN / PH / Reddit / X / Awesome PR 现成可发）
-- [ ] 英文 README 与中英分栏
+- [x] 英文 README 与中英分栏（`README.md` / `README_CN.md`，能力、30 秒示例、
+      MCP 配置与测试徽章双向同步）
+- [x] **DoIP over TLS 证书审计** `src/vehsec/doip_tls.py`：零依赖 X.509 解析 +
+      纯 Python RSA 验签，分级审计 + TLS 版本探测 + 明文 13400 旁路检查
+- [x] **MCP 零摩擦安装**：`vehsec-mcp` console script + `uvx`/`pipx` 一行起服务
 - [ ] 拆分为三个独立仓库（mcp / toolkit / awesome）分别冲 Trending
 
 ## 传播里程碑
@@ -141,3 +145,28 @@ GitHub Trending 按「星增速」加权：24–48 小时内冲 50–200 星即�
     12 个，把 `low` 置信度误读成"已经很接近答案"。
   * 断言"新 seed 没被观测过"时我第一版写反了（返回 None 反而断言通过），改成
     `assert seed not in [s for s, _ in pairs]` 直白写法最稳。
+
+### v0.3.0 进度（2026-10-21）
+- 测试 220 → **277**（+57）；MCP 工具 28 → **31**；版本 **0.2.0 → 0.3.0**。
+- **DoIP over TLS 证书审计（10-20 完成、本日收尾提交）** `src/vehsec/doip_tls.py`：
+  零依赖 X.509 DER 解析 + **纯 Python 验算 RSA PKCS#1 v1.5 签名**，所以"自签名"
+  是算出来的，不是 `subject == issuer` 字符串比较猜的。审计按 critical/high/
+  medium/low 分级 + 0–100 打分；`probe_tls()` 逐个 TLS 版本单独探测（能发现还在
+  应答 TLS 1.0 的网关）；`audit_endpoint()` 额外检查明文 13400 是否仍接受路由激活
+  ——若仍接受，TLS 监听就是摆设。
+- **MCP 零摩擦安装（本日主线）**：新增 `vehsec-mcp` 专用 console script，
+  `uvx --from "vehsec[mcp]" vehsec-mcp` 一行起服务，不用克隆、不用建 venv。
+  这是"采用率 → star"链条上摩擦最大的一环：老写法要求用户先 clone + venv +
+  `pip install -e`，任何一步卡住访客就走了。
+- `vehsec mcp --check`：不开 stdio 就列出 Agent 能拿到的全部 31 个工具，
+  既是排障入口也是 CI 断言点。
+- **新增 `tests/test_entrypoints.py`（16 个测试）**，专门钉住会静默腐烂的东西：
+  console script 目标能否真的解析成可调用对象、`@mcp.tool()` 装饰符个数是否等于
+  运行时 manifest 条数、`__init__.py` 与 `pyproject.toml` 版本号是否一致。
+  这类问题**不会被任何行为测试发现**，但会让 README 里的一行命令直接失效。
+- 踩坑记录：
+  * `pyproject.toml` 里 `addopts = "-q"` 与命令行 `-q` 叠加成 `-qq`，**汇总行
+    （"277 passed"）会被直接吞掉**，看起来像测试没跑完。要计数就用
+    `--co -q | grep -c "::"`，或显式传 `-p no:cacheprovider` 后看统计输出。
+  * rich 表格里凡是展示外部字符串（工具描述）都要 `escape()`，否则描述里的
+    `[...]` 会被当 markup 吃掉——和 10-18 那条是同一个坑，换个文件又踩一次。

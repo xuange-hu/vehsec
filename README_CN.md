@@ -4,7 +4,7 @@
 > 三种入口，让你（或 AI 编程 Agent）直接驱动。**不需要真车。**
 
 [![CI](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml/badge.svg)](https://github.com/xuange-hu/vehsec/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-220%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-277%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-2026%20标准-green.svg)](https://modelcontextprotocol.io)
@@ -46,6 +46,16 @@ Shell 化严重，**新手很难在不动真车的前提下上手**。
 
 ## 快速开始
 
+**方式 A —— 一行命令，不用克隆、不用建虚拟环境**（最适合直接把 MCP 交给 Agent）：
+
+```bash
+uvx --from "vehsec[mcp]" vehsec-mcp     # 启动 stdio MCP 服务
+uvx --from "vehsec[cli]" vehsec --help  # 跑 CLI，用完不留痕
+# 没有 uv？pipx run --spec "vehsec[mcp]" vehsec-mcp
+```
+
+**方式 B —— 克隆下来改代码：**
+
 ```bash
 git clone https://github.com/xuange-hu/vehsec && cd vehsec
 python -m venv .venv && .venv\Scripts\activate        # Linux/macOS: source .venv/bin/activate
@@ -54,23 +64,39 @@ pip install -e ".[all]"
 vehsec --help             # CLI
 vehsec tui                # 交互式 TUI
 vehsec mcp                # MCP stdio 服务（给 Agent 用）
+vehsec mcp --check        # 列出 Agent 能拿到的 31 个工具后退出
 python examples/demo.py   # 5 步演示，无需硬件
 ```
 
 ## 让 AI Agent 驱动
 
-把 `examples/mcp-config.json` 加进 Agent 的 MCP 配置（`~/.workbuddy/mcp.json`、
-Cursor 的 `~/.cursor/mcp.json`，或 Claude Desktop 的 `claude_desktop_config.json`）
-并信任该 server，然后直接说：
+把下面这段加进 Agent 的 MCP 配置（`~/.workbuddy/mcp.json`、Cursor 的
+`~/.cursor/mcp.json`、Cline，或 Claude Desktop 的 `claude_desktop_config.json`）
+并信任该 server——**不用克隆、不用建虚拟环境**，`uv`/`uvx` 首次启动自动拉取：
+
+```json
+{
+  "mcpServers": {
+    "vehsec": {
+      "command": "uvx",
+      "args": ["--from", "vehsec[mcp]", "vehsec-mcp"]
+    }
+  }
+}
+```
+
+已经装过 `vehsec` 的话，等价写法是 `{ "command": "vehsec", "args": ["mcp"] }`
+（`examples/mcp-config.json`）。然后直接说：
 
 > "对虚拟 ECU 跑一次 UDS 安全访问，把 seed 和 key 给我。"
 
-共 28 个工具：`can_send`、`can_fuzz`、`can_analyze`、`uds_security_access`、
+共 31 个工具：`can_send`、`can_fuzz`、`can_analyze`、`uds_security_access`、
 `uds_read_did`、`uds_read_dtcs`、`uds_clear_dtcs`、`uds_decode_dtc`、`uds_raw`、
 `seedkey_solve`、`seedkey_vendors`、`seedkey_recover`、`seedkey_predict`、
 `v2x_analyze`、
 `icsim_set_speed`、`icsim_tamper_demo`、
-`doip_simulate`、`doip_probe`、`dbc_decode`、`dbc_info`、`j1939_decode`、`j1939_encode`、
+`doip_simulate`、`doip_probe`、`doip_tls_audit`、`doip_tls_probe`、`doip_tls_simulate`、
+`dbc_decode`、`dbc_info`、`j1939_decode`、`j1939_encode`、
 `j1939_decode_name`、`j1939_decode_dm1`、`isotp_segment`、`isotp_decode`、
 `isotp_reassemble`、`isotp_explain`。
 
@@ -98,6 +124,11 @@ Cursor 的 `~/.cursor/mcp.json`，或 Claude Desktop 的 `claude_desktop_config.
   自带**进程内模拟器**，`vehsec doip simulate` 无车无硬件即可跑通全流程。
 - **DBC 解析**：把 `1A4#1A02` 变成 `Speed = 41.5 km/h`。**纯标准库**实现，支持
   Intel / Motorola 字节序、有符号、缩放、VAL_ 枚举与多路复用信号。
+- **DoIP over TLS（ISO 13400-2 安全诊断）**：TCP 3496 上的加密诊断通道，外加一套
+  **证书审计引擎**——从零写的、零依赖 X.509 DER 解析器，并用纯 Python 验算
+  RSA PKCS#1 v1.5 签名，所以"自签名"是**算出来的**，不是拿 subject==issuer 字符串
+  猜的。对密钥长度、签名哈希、有效期、SAN/主机名、CA 链分级打分，
+  还能探测网关实际接受哪些 TLS 版本。
 - **故障码 DTC（SAE J2012 / ISO 14229-1）**：读取（19 服务的 01/02/0A 子功能）、
   清除（14 服务），并把 3 字节故障码解成 `U0100` 这样的 J2012 编号 + 状态位
   （confirmedDTC / pendingDTC / testFailed…）+ 简述。
@@ -174,6 +205,30 @@ $ vehsec seedkey predict --pairs 11223344:4B78691E,a5b6c7d8:FFEC9D82,deadbeeF:84
 algorithm key[i] = seed[i] ^ 0x5A
 key      5A4B7869  (high confidence, 3 pair(s))
 ```
+
+## DoIP over TLS：30 秒上手
+
+```bash
+# 1. 进程内起一个 TLS DoIP 网关：握手 → 路由激活 → UDS 读 VIN → 顺手审计证书
+vehsec doip tls-simulate
+#   协商出 TLSv1.3 / TLS_AES_256_GCM_SHA384
+#   UDS 22 F190 -> 62f1905756575a5a5a314a5a5857303030303031
+#   STRONG score 100/100
+
+# 2. 审计抓到的证书（PEM 或 DER 都行）
+vehsec doip tls-audit --file gateway.pem --ca oem-ca.pem --hostname gateway.local
+#   REJECT score 10/100 grade F
+#     [CRITICAL] RSA 密钥只有 1024 位
+#     [HIGH    ] 用 SHA1 签名（sha1WithRSAEncryption）
+#     [MEDIUM  ] 没有 subjectAltName 扩展，身份只剩 CN
+
+# 3. 审计真实网关：支持哪些 TLS 版本、证书怎么样、明文 13400 是不是还开着
+vehsec doip tls-probe --host 192.0.2.10
+```
+
+最有价值的发现通常来自第 3 条：**如果明文 13400 端口仍然接受路由激活，那它自己
+的 TLS 监听就纯属摆设**——攻击者直接绕过就行。审计还会逐个 TLS 版本单独探测，
+这正是"网关还在应答 TLS 1.0"这类问题的发现方式。
 
 ## 5 个可运行实验
 
