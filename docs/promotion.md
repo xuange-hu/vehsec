@@ -25,6 +25,21 @@ vehicle-security, car-hacking, can-bus, uds, isotp, doip, j1939, v2x, mcp-server
 > 全部跑在虚拟总线上，**不需要真车**就能做 UDS 诊断、CAN 重放与模糊、Seed-Key 求解、
 > V2X 签名分析和仪表盘篡改演示。
 
+## 1.5 核心钩子：一行命令（所有文案都要带这一句）
+
+```
+uvx --from "vehsec[mcp]" vehsec-mcp
+```
+
+不用克隆、不用建虚拟环境、`uv` 首次启动自动拉取。加进 Claude Code / Cursor / Cline
+的 MCP 配置即可。**这是转化率最高的一句话**——"要装环境"是访客流失的第一大原因，
+所以每一条文案（Show HN、Reddit、X、掘金）都必须把它放在第二段：
+
+```json
+{ "mcpServers": { "vehsec": { "command": "uvx",
+                              "args": ["--from", "vehsec[mcp]", "vehsec-mcp"] } } }
+```
+
 ## 2. Show HN（发布当天 08:00–09:00 PT）
 
 **标题**（Show HN 要求 `Show HN:` 前缀，≤80 字符）
@@ -37,10 +52,14 @@ Show HN: vehsec – car-hacking toolkit you can drive from Claude Code over MCP
 Hi HN — I build CTF challenges around in-vehicle networks and kept re-writing the
 same glue code, so I packaged it.
 
-vehsec wraps CAN/UDS/Seed-Key/V2X/ICSim behind three interfaces: a CLI, a TUI, and
-an MCP server. The MCP bit is the part I find interesting — you can literally tell
-Claude Code or Cursor "run a UDS security access on the virtual ECU" and it will
-drive the 27-service handshake and hand you the seed/key.
+vehsec wraps CAN/UDS/Seed-Key/V2X/ICSim/DoIP behind three interfaces: a CLI, a TUI,
+and an MCP server. The MCP bit is the part I find interesting — you can literally
+tell Claude Code or Cursor "run a UDS security access on the virtual ECU" and it
+will drive the 27-service handshake and hand you the seed/key.
+
+There is nothing to install:
+
+    uvx --from "vehsec[mcp]" vehsec-mcp
 
 Everything runs on a virtual CAN bus (python-can 'virtual', or vcan0 + ICSim on
 Linux), so there is no hardware in the loop and nothing to brick. Five Docker labs
@@ -49,6 +68,12 @@ from a reused V2X nonce, a CAN state-machine injection, and UDS 0x27 Seed-Key �
 give it five sniffed (seed, key) pairs and it reconstructs the algorithm, then
 unlocks the next session with a seed it never saw. That last one needs nothing but
 the stdlib.
+
+Two things I did not expect when I started: (1) the DoIP-over-TLS certificate audit
+needs no crypto library — I wrote a DER reader and verified RSA PKCS#1 v1.5 signatures
+in pure Python, so "self-signed" is computed rather than string-compared; and (2) the
+single most useful check is whether the gateway's *plaintext* port 13400 still accepts
+a routing activation. If it does, its TLS listener is decorative.
 
 The V2X one is real math, not a toy: two signatures sharing a nonce give you
 k = (z1-z2)(s1-s2)^-1 and d = (s1k-z1)r^-1 mod n.
@@ -92,8 +117,9 @@ or let Claude Code / Cursor drive it over MCP. Five Docker labs (including UDS 0
 ## 6. Awesome 清单 PR 用的条目
 
 ```markdown
-- [vehsec](https://github.com/xuange-hu/vehsec) — CAN/UDS/Seed-Key/V2X/ICSim toolkit
-  with CLI, TUI and an MCP server; runs on virtual CAN, no hardware required.
+- [vehsec](https://github.com/xuange-hu/vehsec) — CAN/UDS/Seed-Key/V2X/DoIP-TLS toolkit
+  with CLI, TUI and an MCP server (31 tools, `uvx --from "vehsec[mcp]" vehsec-mcp`);
+  runs on virtual CAN, 5 Docker CTF labs, no hardware required.
 ```
 可提交的清单：`awesome-canbus`、`awesome-automotive-security`、`awesome-mcp-servers`、
 `awesome-vehicle-security`（自建，见仓库根目录）。**一个 PR 只提一个清单**，措辞要贴合该清单风格。
