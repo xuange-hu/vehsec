@@ -11,7 +11,7 @@ dev: install                ## install plus dev tooling and pre-commit
 	pip install pytest ruff pre-commit
 	pre-commit install || true
 
-test:                       ## run the test suite (25 tests)
+test:                       ## run the test suite
 	pytest -q
 
 lint:                       ## ruff: syntax / undefined names

@@ -42,10 +42,15 @@ from the older tooling.
 **Option A — one line, no clone, no venv** (best for handing the MCP server to an agent):
 
 ```bash
-uvx --from "vehsec[mcp]" vehsec-mcp     # MCP server on stdio
-uvx --from "vehsec[cli]" vehsec --help  # CLI, no install left behind
-# no uv? pipx run --spec "vehsec[mcp]" vehsec-mcp
+uvx --from "vehsec[mcp] @ git+https://github.com/xuange-hu/vehsec" vehsec-mcp
+uvx --from "vehsec @ git+https://github.com/xuange-hu/vehsec" vehsec --help
+# no uv? pipx run --spec "vehsec[mcp] @ git+https://github.com/xuange-hu/vehsec" vehsec-mcp
 ```
+
+The `@ git+…` form installs straight from this repository, so it works today.
+Once the package is on PyPI it shortens to `uvx --from "vehsec[mcp]" vehsec-mcp`;
+`.github/workflows/publish.yml` publishes automatically on every release, it only
+needs PyPI Trusted Publishing enabled **once**.
 
 **Option B — clone and hack on it:**
 
@@ -72,7 +77,7 @@ trust the server — no clone, no venv, `uv`/`uvx` fetches it on first launch:
   "mcpServers": {
     "vehsec": {
       "command": "uvx",
-      "args": ["--from", "vehsec[mcp]", "vehsec-mcp"]
+      "args": ["--from", "vehsec[mcp] @ git+https://github.com/xuange-hu/vehsec", "vehsec-mcp"]
     }
   }
 }

@@ -1,0 +1,86 @@
+name: Publish to PyPI
+
+# Why this file exists
+# --------------------
+# The README's headline install path is `uvx --from "vehsec[mcp]"`, which
+# resolves from PyPI. Until the project is actually *on* PyPI that command
+# 404s, so every visitor's first action fails. This workflow removes the
+# blocker permanently: it builds and uploads on every GitHub Release.
+#
+# It uses PyPI **Trusted Publishing** (OIDC), so there is no API token to
+# rotate or leak. One-time setup, done once in the browser:
+#   https://pypi.org/manage/account/publishing/
+#     owner:       xuange-hu
+#     repository:  vehsec
+#     workflow:    publish.yml
+#     environment: pypi
+# Until that is registered the job fails with a clear message and nothing
+# else in CI is affected.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Upload to TestPyPI instead of PyPI"
+        type: choice
+        default: "pypi"
+        options: [pypi, testpypi]
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Check metadata renders on PyPI
+        run: twine check dist/*
+
+      # A wheel that installs but cannot import is the exact bug this
+      # workflow exists to prevent; install it in a clean venv and run it.
+      - name: Smoke-test the built wheel in a clean venv
+        run: |
+          python -m venv .smoke
+          ./.smoke/bin/python -m pip install --quiet dist/*.whl
+          ./.smoke/bin/vehsec --help > /dev/null
+          ./.smoke/bin/vehsec mcp --check | tail -2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.repository == 'testpypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+      - name: Publish to PyPI
+        if: ${{ github.event_name == 'release' || inputs.repository == 'pypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1

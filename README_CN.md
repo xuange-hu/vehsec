@@ -49,10 +49,14 @@ Shell 化严重，**新手很难在不动真车的前提下上手**。
 **方式 A —— 一行命令，不用克隆、不用建虚拟环境**（最适合直接把 MCP 交给 Agent）：
 
 ```bash
-uvx --from "vehsec[mcp]" vehsec-mcp     # 启动 stdio MCP 服务
-uvx --from "vehsec[cli]" vehsec --help  # 跑 CLI，用完不留痕
-# 没有 uv？pipx run --spec "vehsec[mcp]" vehsec-mcp
+uvx --from "vehsec[mcp] @ git+https://github.com/xuange-hu/vehsec" vehsec-mcp
+uvx --from "vehsec @ git+https://github.com/xuange-hu/vehsec" vehsec --help
+# 没有 uv？pipx run --spec "vehsec[mcp] @ git+https://github.com/xuange-hu/vehsec" vehsec-mcp
 ```
+
+`@ git+…` 这种写法直接从本仓库安装，**今天就能用**。等项目发布到 PyPI 之后
+会缩写成 `uvx --from "vehsec[mcp]" vehsec-mcp`；`.github/workflows/publish.yml`
+会在每次 Release 时自动发布，只需在 PyPI 侧**一次性**开启 Trusted Publishing。
 
 **方式 B —— 克隆下来改代码：**
 
@@ -79,7 +83,7 @@ python examples/demo.py   # 5 步演示，无需硬件
   "mcpServers": {
     "vehsec": {
       "command": "uvx",
-      "args": ["--from", "vehsec[mcp]", "vehsec-mcp"]
+      "args": ["--from", "vehsec[mcp] @ git+https://github.com/xuange-hu/vehsec", "vehsec-mcp"]
     }
   }
 }

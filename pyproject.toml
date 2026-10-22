@@ -17,14 +17,23 @@ classifiers = [
     "Topic :: Security",
     "Intended Audience :: Education",
 ]
+# Base deps must be enough to run the *declared console script* `vehsec`.
+# `click`/`rich` live here rather than in the `cli` extra on purpose:
+# `pip install vehsec && vehsec --help` used to die with
+# ModuleNotFoundError because `[project.scripts]` points at vehsec.cli
+# while its deps were optional. See tests/test_packaging.py — the contract
+# is asserted there so it cannot silently regress again.
 dependencies = [
     "python-can>=4.3",
     "can-isotp>=1.0",
     "udsoncan>=1.21",
     "ecdsa>=0.19",
+    "click>=8.1",
+    "rich>=13.7",
 ]
 
 [project.optional-dependencies]
+# kept in sync with base deps so every documented command keeps resolving
 cli = ["click>=8.1", "rich>=13.7"]
 tui = ["textual>=0.60"]
 mcp = ["mcp>=1.2,<2"]

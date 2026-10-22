@@ -28,7 +28,7 @@ vehicle-security, car-hacking, can-bus, uds, isotp, doip, j1939, v2x, mcp-server
 ## 1.5 核心钩子：一行命令（所有文案都要带这一句）
 
 ```
-uvx --from "vehsec[mcp]" vehsec-mcp
+uvx --from "vehsec[mcp] @ git+https://github.com/xuange-hu/vehsec" vehsec-mcp
 ```
 
 不用克隆、不用建虚拟环境、`uv` 首次启动自动拉取。加进 Claude Code / Cursor / Cline
@@ -37,8 +37,14 @@ uvx --from "vehsec[mcp]" vehsec-mcp
 
 ```json
 { "mcpServers": { "vehsec": { "command": "uvx",
-                              "args": ["--from", "vehsec[mcp]", "vehsec-mcp"] } } }
+                              "args": ["--from", "vehsec[mcp] @ git+https://github.com/xuange-hu/vehsec",
+                                       "vehsec-mcp"] } } }
 ```
+
+> **2026-10-23 修正（别再退回旧写法）**：原先所有文案都写 `uvx --from "vehsec[mcp]"`，
+> 但 vehsec **还没有发布到 PyPI**，这条命令对访客必然 404。必须用 `@ git+…` 形式。
+> 等 PyPI 首发（`.github/workflows/publish.yml`，Trusted Publishing 一次性开通）
+> 之后再统一改回短写法。
 
 ## 2. Show HN（发布当天 08:00–09:00 PT）
 
@@ -59,7 +65,7 @@ will drive the 27-service handshake and hand you the seed/key.
 
 There is nothing to install:
 
-    uvx --from "vehsec[mcp]" vehsec-mcp
+    uvx --from "vehsec[mcp] @ git+https://github.com/xuange-hu/vehsec" vehsec-mcp
 
 Everything runs on a virtual CAN bus (python-can 'virtual', or vcan0 + ICSim on
 Linux), so there is no hardware in the loop and nothing to brick. Five Docker labs
@@ -118,7 +124,7 @@ or let Claude Code / Cursor drive it over MCP. Five Docker labs (including UDS 0
 
 ```markdown
 - [vehsec](https://github.com/xuange-hu/vehsec) — CAN/UDS/Seed-Key/V2X/DoIP-TLS toolkit
-  with CLI, TUI and an MCP server (31 tools, `uvx --from "vehsec[mcp]" vehsec-mcp`);
+  with CLI, TUI and an MCP server (31 tools, one `uvx` line from the repo);
   runs on virtual CAN, 5 Docker CTF labs, no hardware required.
 ```
 可提交的清单：`awesome-canbus`、`awesome-automotive-security`、`awesome-mcp-servers`、
