@@ -28,12 +28,18 @@ on:
         default: "pypi"
         options: [pypi, testpypi]
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    timeout-minutes: 15
     name: Build distributions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -62,7 +68,9 @@ jobs:
           name: dist
           path: dist/
 
+          retention-days: 7
   publish:
+    timeout-minutes: 15
     name: Publish
     needs: build
     runs-on: ubuntu-latest
