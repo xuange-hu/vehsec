@@ -6,6 +6,44 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Everything a test, a README code block or a lab depends on at runtime.
+ASSETS = [
+    "examples/sample_candump.log",
+    "examples/sample.dbc",
+    "examples/demo.py",
+    "examples/mcp-config.json",
+    "examples/quickstart.md",
+]
+
+
+def _inside_work_tree() -> bool:
+    probe = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        capture_output=True, text=True, cwd=ROOT,
+    )
+    return probe.returncode == 0 and probe.stdout.strip() == "true"
+
+
+@pytest.mark.skipif(not _inside_work_tree(), reason="not a git checkout")
+def test_assets_are_committed_not_just_present():
+    """A fixture exists on my disk and vanished in CI. Never again.
+
+    `.gitignore` had `*.log`, so `examples/sample_candump.log` was never added:
+    every local run passed, and every CI run died with FileNotFoundError. The
+    only way to catch that class of bug is to ask git, not the filesystem --
+    `Path.exists()` is true here and false on the runner.
+    """
+    for rel in ASSETS:
+        assert (ROOT / rel).exists(), f"{rel} is referenced by the tests but missing locally"
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", rel],
+            capture_output=True, text=True, cwd=ROOT,
+        )
+        assert tracked.returncode == 0, (
+            f"{rel} exists locally but git does not track it - it will be "
+            f"absent from CI and from every fresh clone. Check .gitignore."
+        )
+
 
 def test_sample_candump_fixture_parses():
     from vehsec.can_bus import parse_candump

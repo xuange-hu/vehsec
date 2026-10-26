@@ -67,9 +67,14 @@ jobs:
       - name: README test-count badge matches reality
         if: runner.os == 'Linux'
         run: |
-          actual=$(pytest --collect-only -q 2>/dev/null | grep -oE "[0-9]+ tests? collected" | grep -oE "^[0-9]+")
-          claimed=$(grep -oE "tests-[0-9]+%20passing" README.md | grep -oE "[0-9]+" | head -1)
-          echo "collected=$actual badge=$claimed"
-          if [ "$actual" != "$claimed" ]; then
+          # -o addopts= neutralises a project-level addopts="-q": combined with the
+          # -q below it becomes -qq, and pytest -qq drops the "N tests collected"
+          # summary line, which emptied this check once already.
+          actual=$(pytest --collect-only -q -o addopts= 2>/dev/null | grep -oE "[0-9]+ tests? collected" | grep -oE "^[0-9]+" || true)
+          claimed=$(grep -oE "tests-[0-9]+%20passing" README.md | grep -oE "[0-9]+" | head -1 || true)
+          echo "collected=${actual:-NOTHING} badge=${claimed:-NONE}"
+          if [ -z "$actual" ]; then
+            echo "::warning::pytest collected nothing - the badge check did not run"
+          elif [ "$actual" != "$claimed" ]; then
             echo "::warning::README badge says $claimed but pytest collects $actual - update README.md"
           fi

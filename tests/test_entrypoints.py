@@ -19,9 +19,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 try:
     import tomllib
-except ModuleNotFoundError:  # Python 3.10
-    tomllib = None  # type: ignore[assignment]
+except ModuleNotFoundError:  # Python <= 3.10: tomllib landed in 3.11
+    import sys
 
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import _pytoml as tomllib  # type: ignore[no-redef]
+
+# tests/_pytoml.py covers 3.10 as well, so nothing here is skipped any more.
 needs_toml = pytest.mark.skipif(tomllib is None, reason="tomllib needs Python 3.11+")
 
 

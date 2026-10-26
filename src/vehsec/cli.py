@@ -6,7 +6,9 @@ and DBC decoding, plus ``vehsec tui`` and ``vehsec mcp``.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import sys
 
 import click
 from rich.console import Console
@@ -14,6 +16,28 @@ from rich.markup import escape
 from rich.table import Table
 
 console = Console()
+
+
+def force_utf8_stdio() -> None:
+    """Make stdout/stderr UTF-8 before the first byte is printed.
+
+    Several CAN/UDS analysis hints are printed in Chinese, and Windows consoles
+    default to cp936/cp1252 — rich will happily hand those bytes to a codec
+    that cannot encode them and the first command a Windows visitor runs dies
+    with UnicodeEncodeError. No Linux or macOS machine can reproduce that, so
+    it only ever showed up in CI. Reconfiguring is a no-op where it is already
+    UTF-8.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:  # e.g. a plain StringIO in a test host
+            continue
+        if (getattr(stream, "encoding", "") or "").lower().replace("-", "") == "utf8":
+            continue
+        # suppress() rather than try/except/pass: some repos' ruff config
+        # enables SIM105, and the two are behaviourally identical here.
+        with contextlib.suppress(ValueError, OSError):  # detached / closed stream
+            reconfigure(encoding="utf-8", errors="replace")
 
 
 def _hex(s: str) -> bytes:
@@ -760,6 +784,7 @@ def mcp(check):
 
 
 def main():
+    force_utf8_stdio()
     cli()
 
 
