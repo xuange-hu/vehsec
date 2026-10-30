@@ -24,24 +24,24 @@ classifiers = [
 # while its deps were optional. See tests/test_packaging.py — the contract
 # is asserted there so it cannot silently regress again.
 dependencies = [
-    "python-can>=4.3",
-    "can-isotp>=1.0",
-    "udsoncan>=1.21",
-    "ecdsa>=0.19",
-    "click>=8.1",
-    "rich>=13.7",
+    "python-can>=4.3,<5",
+    "can-isotp>=1.0,<3",
+    "udsoncan>=1.21,<2",
+    "ecdsa>=0.19,<1",
+    "click>=8.1,<9",
+    "rich>=13.7,<15",
 ]
 
 [project.optional-dependencies]
 # kept in sync with base deps so every documented command keeps resolving
-cli = ["click>=8.1", "rich>=13.7"]
-tui = ["textual>=0.60"]
+cli = ["click>=8.1,<9", "rich>=13.7,<15"]
+tui = ["textual>=0.60,<2"]
 mcp = ["mcp>=1.2,<2"]
-dev = ["pytest>=8.0", "ruff>=0.9", "pre-commit>=4.0", "Pillow>=10.0"]
+dev = ["pytest>=8.0,<10", "ruff>=0.9,<1", "pre-commit>=4.0,<5", "Pillow>=10.0,<12"]
 # only needed to *mint* key material for the TLS simulator; parsing and
 # auditing certificates stays dependency-free on purpose
-tls = ["cryptography>=42"]
-all = ["click>=8.1", "rich>=13.7", "textual>=0.60", "mcp>=1.2,<2", "cryptography>=42"]
+tls = ["cryptography>=42,<47"]
+all = ["click>=8.1,<9", "rich>=13.7,<15", "textual>=0.60,<2", "mcp>=1.2,<2", "cryptography>=42,<47"]
 
 [project.scripts]
 vehsec = "vehsec.cli:main"
