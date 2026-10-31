@@ -78,3 +78,27 @@ jobs:
           elif [ "$actual" != "$claimed" ]; then
             echo "::warning::README badge says $claimed but pytest collects $actual - update README.md"
           fi
+
+  fresh-clone:
+    # Every other job installs the package before testing, which is exactly why
+    # a broken `pytest` on a bare clone went unnoticed here for months: vehsec
+    # only worked on the maintainer's machine because it was pip-installed.
+    # Install pytest and nothing else, then let the suite bootstrap itself.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.12'
+
+      - name: pytest only, no package install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+
+      - name: A bare clone can run its own tests
+        run: python -m pytest -q
