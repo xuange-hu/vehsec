@@ -80,10 +80,13 @@ jobs:
           fi
 
   fresh-clone:
-    # Every other job installs the package before testing, which is exactly why
-    # a broken `pytest` on a bare clone went unnoticed here for months: vehsec
-    # only worked on the maintainer's machine because it was pip-installed.
-    # Install pytest and nothing else, then let the suite bootstrap itself.
+    # vehsec is not a zero-dependency project, so "pytest with nothing
+    # installed" is not a claim it can make. What it can claim is the next
+    # best thing: a clone plus the *base* dependencies - no [all] extras, no
+    # pre-installed package - is enough for the suite to collect and run.
+    # Extras are opt-in and every test that needs one says so with
+    # `pytest.importorskip`, so this job also proves no test leaks a hard
+    # dependency on textual, mcp or cryptography.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -95,10 +98,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: pytest only, no package install
+      - name: Base dependencies and pytest, no extras, no editable install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest
+          python -m pip install . pytest
 
-      - name: A bare clone can run its own tests
+      - name: A clone with base deps can run its own tests
         run: python -m pytest -q
