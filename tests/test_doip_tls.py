@@ -347,6 +347,7 @@ def test_audit_endpoint_on_a_dead_host_is_unknown():
 def test_mcp_exposes_the_doip_tls_tools():
     import asyncio
 
+    pytest.importorskip("mcp")
     from vehsec.mcp_server import mcp
 
     names = {t.name for t in asyncio.run(mcp.list_tools())}

@@ -65,11 +65,25 @@ def test_console_scripts_declared():
 
 @needs_toml
 def test_entry_point_targets_are_importable():
-    """Resolve each ``module:attr`` target the way setuptools would."""
+    """Resolve each ``module:attr`` target the way setuptools would.
+
+    `vehsec-mcp` is the one entry point that needs an optional extra, so
+    without the `mcp` package installed it cannot be imported - and that is
+    correct, not a regression. Every other target has to import on base
+    dependencies alone; the extras are proven by the `[mcp]` extra assertion.
+    """
     import importlib
 
     for target in _pyproject()["project"]["scripts"].values():
         module, attr = target.split(":")
+        if module == "vehsec.mcp_server":
+            try:
+                importlib.import_module("mcp")
+            except ImportError:
+                # The extra is not installed, so this entry point cannot be
+                # resolved - that is what `[project.optional-dependencies]`
+                # means. Every other target is still checked.
+                continue
         obj = importlib.import_module(module)
         for part in attr.split("."):
             obj = getattr(obj, part)
@@ -77,6 +91,7 @@ def test_entry_point_targets_are_importable():
 
 
 def test_mcp_module_exposes_run_and_manifest():
+    pytest.importorskip("mcp")
     from vehsec import mcp_server
 
     assert callable(mcp_server.run)
