@@ -16,6 +16,25 @@
 
 ---
 
+## Contents
+
+- [Why](#why)
+- [Architecture](#architecture)
+- [Quick start](#quick-start)
+- [Let an AI agent drive it](#let-an-ai-agent-drive-it)
+- [Capabilities](#capabilities)
+- [Labs — 5 runnable Docker exercises](#labs--5-runnable-docker-exercises)
+- [UDS in 30 seconds — no hardware](#uds-in-30-seconds--no-hardware)
+- [Diagnostic trouble codes in 30 seconds](#diagnostic-trouble-codes-in-30-seconds)
+- [ISO-TP in 30 seconds](#iso-tp-in-30-seconds)
+- [Seed-Key algorithm recovery in 30 seconds](#seed-key-algorithm-recovery-in-30-seconds)
+- [DoIP & DBC in 30 seconds](#doip--dbc-in-30-seconds)
+- [DoIP TLS / gateway certificates in 30 seconds](#doip-tls--gateway-certificates-in-30-seconds)
+- [Docs](#docs)
+- [Tests](#tests)
+- [Legal & ethics](#legal--ethics)
+- [License](#license)
+
 ## Why
 
 Vehicle / in-vehicle-network (IVN) security is one of the hottest areas in security
