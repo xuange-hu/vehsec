@@ -37,7 +37,7 @@ dependencies = [
 cli = ["click>=8.1,<9", "rich>=13.7,<16"]
 tui = ["textual>=0.60,<2"]
 mcp = ["mcp>=1.2,<2"]
-dev = ["pytest>=8.0,<10", "ruff>=0.9,<1", "pre-commit>=4.0,<5", "Pillow>=10.0,<12"]
+dev = ["pytest>=8.0,<10", "ruff>=0.9,<1", "pre-commit>=4.0,<5", "Pillow>=10.0,<13"]
 # only needed to *mint* key material for the TLS simulator; parsing and
 # auditing certificates stays dependency-free on purpose
 tls = ["cryptography>=42,<47"]
