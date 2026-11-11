@@ -36,7 +36,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Is the project registered on PyPI?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      # Trusted Publishing needs the project to exist on PyPI *and* a publisher
+      # configured for this repository. Until that one-time setup happens, the
+      # upload would fail with "invalid-publisher" and paint a red X on every
+      # release - a red X that means "not set up yet", which nobody can tell
+      # apart from "the package is broken". So: ask first, skip deliberately,
+      # and start publishing on the next release after the setup is done.
+      - id: check
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://pypi.org/pypi/vehsec/json || true)
+          echo "pypi status: $code"
+          if [ "$code" = "200" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::vehsec is not on PyPI yet. Register the project and a Trusted Publisher for xuange-hu/vehsec, then re-run this workflow."
+          fi
+
   build:
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true'
     timeout-minutes: 15
     name: Build distributions
     runs-on: ubuntu-latest
