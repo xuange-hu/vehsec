@@ -14,7 +14,7 @@ name: Publish to PyPI
 #     repository:  vehsec
 #     workflow:    publish.yml
 #     environment: pypi
-# Until that is registered the job fails with a clear message and nothing
+# Until that is registered the preflight job skips the publish with a notice and nothing
 # else in CI is affected.
 
 on:
