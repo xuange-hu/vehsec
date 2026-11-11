@@ -33,6 +33,9 @@ EXPECTED = {
     "j1939_decode_dm1",
     "doip_simulate",
     "doip_probe",
+    "doip_tls_simulate",
+    "doip_tls_probe",
+    "doip_tls_audit",
     "dbc_decode",
     "dbc_info",
 }
@@ -41,7 +44,10 @@ EXPECTED = {
 def test_all_tools_registered():
     tools = asyncio.run(mcp_server.mcp.list_tools())
     names = {t.name for t in tools}
-    assert EXPECTED <= names, f"missing tools: {EXPECTED - names}"
+    # equality, not subset: a subset let three doip_tls_* tools ship without
+    # ever appearing in this list
+    assert names == EXPECTED, f"missing: {EXPECTED - names}; unexpected: {names - EXPECTED}"
+    assert names == {t["name"] for t in mcp_server.tool_manifest()}
 
 
 def test_every_tool_has_a_description():
