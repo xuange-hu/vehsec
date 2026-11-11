@@ -35,13 +35,13 @@ dependencies = [
 [project.optional-dependencies]
 # kept in sync with base deps so every documented command keeps resolving
 cli = ["click>=8.1,<9", "rich>=13.7,<16"]
-tui = ["textual>=0.60,<2"]
+tui = ["textual>=0.60,<9"]
 mcp = ["mcp>=1.2,<2"]
 dev = ["pytest>=8.0,<10", "ruff>=0.9,<1", "pre-commit>=4.0,<5", "Pillow>=10.0,<13"]
 # only needed to *mint* key material for the TLS simulator; parsing and
 # auditing certificates stays dependency-free on purpose
-tls = ["cryptography>=42,<47"]
-all = ["click>=8.1,<9", "rich>=13.7,<16", "textual>=0.60,<2", "mcp>=1.2,<2", "cryptography>=42,<47"]
+tls = ["cryptography>=42,<51"]
+all = ["click>=8.1,<9", "rich>=13.7,<16", "textual>=0.60,<9", "mcp>=1.2,<2", "cryptography>=42,<51"]
 
 [project.scripts]
 vehsec = "vehsec.cli:main"
