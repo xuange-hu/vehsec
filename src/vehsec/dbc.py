@@ -10,10 +10,13 @@ subset that matters for automotive work:
   multiplexed signals (``M`` / ``mN``)
 * ``VAL_`` value tables so ``1`` renders as ``"On"``
 * ``CM_`` comments on messages and signals
+* ``BA_DEF_`` / ``BA_DEF_DEF_`` / ``BA_`` **attributes** (definitions, defaults
+  and assignments on messages, signals, nodes and the network)
+* ``SIG_GROUP_`` **signal groups** (named bundles of signals per message)
 
-Deliberately *not* implemented: attributes (``BA_``), signal groups (``SIG_GROUP_``),
-and extended multiplexing. Signals whose definitions are malformed are skipped
-rather than aborting the parse — real OEM DBCs are messy.
+Deliberately *not* implemented: extended multiplexing. Signals whose
+definitions are malformed are skipped rather than aborting the parse —
+real OEM DBCs are messy.
 
 Byte-order note (the part everyone gets wrong)
 ----------------------------------------------
@@ -31,7 +34,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Union
 
-__all__ = ["Signal", "Message", "Database", "DecodeError", "parse_file"]
+__all__ = ["Signal", "Message", "Database", "AttributeDef", "Attribute", "SignalGroup", "DecodeError", "parse_file"]
 
 _RE_BO = re.compile(r"^\s*BO_\s+(\d+)\s+([^:]+?):\s*(\d+)\s+(\S+)")
 _RE_SG = re.compile(
@@ -45,6 +48,10 @@ _RE_SG = re.compile(
 )
 _RE_VAL = re.compile(r"^\s*VAL_\s+(\d+)\s+([A-Za-z0-9_]+)\s+(.*?);", re.DOTALL)
 _RE_VAL_ITEM = re.compile(r"(-?\d+)\s+\"([^\"]*)\"")
+_RE_BA_DEF = re.compile(r"^\s*BA_DEF_\s+(?:(BO_|SG_|BU_|EV_)\s+)?\"([^\"]+)\"\s+(\w+)\s*(.*?);?\s*$")
+_RE_BA_DEF_DEF = re.compile(r"^\s*BA_DEF_DEF_\s+\"([^\"]+)\"\s+(.*?);")
+_RE_BA = re.compile(r"^\s*BA_\s+\"([^\"]+)\"\s+(.*?);", re.DOTALL)
+_RE_SIG_GROUP = re.compile(r"^\s*SIG_GROUP_\s+(\d+)\s+(\S+)\s+(\d+)\s*:\s*(.*?);")
 _RE_CM_BO = re.compile(r"^\s*CM_\s+BO_\s+(\d+)\s+\"([^\"]*)\"\s*;")
 _RE_CM_SG = re.compile(r"^\s*CM_\s+SG_\s+(\d+)\s+([A-Za-z0-9_]+)\s+\"([^\"]*)\"\s*;")
 
@@ -87,6 +94,59 @@ def _bit_positions(start: int, length: int, big_endian: bool) -> List[int]:
 
 
 @dataclass
+class AttributeDef:
+    """A ``BA_DEF_`` definition: what an attribute is allowed to hold."""
+
+    name: str
+    object_type: str = ""  # "" (network) | "BO_" | "SG_" | "BU_" | "EV_"
+    value_type: str = "STRING"  # INT | FLOAT | STRING | ENUM | HEX
+    minimum: Optional[float] = None
+    maximum: Optional[float] = None
+    enum_values: List[str] = field(default_factory=list)
+    default: object = None  # from BA_DEF_DEF_, applied when no BA_ assignment exists
+
+
+@dataclass
+class Attribute:
+    """One ``BA_`` assignment of an attribute to a concrete object."""
+
+    name: str
+    object_type: str = ""  # "" (network) | "BO_" | "SG_" | "BU_" | "EV_"
+    object_id: Optional[int] = None  # message frame id (BO_/SG_)
+    signal_name: Optional[str] = None  # SG_ only
+    node: Optional[str] = None  # BU_/EV_
+    value: object = None
+
+
+@dataclass
+class SignalGroup:
+    """A ``SIG_GROUP_`` record: a named bundle of signals in one message."""
+
+    message_id: int
+    name: str
+    repetitions: int = 1
+    signal_names: List[str] = field(default_factory=list)
+
+
+def _attr_value(text: str, defn: Optional[AttributeDef]) -> object:
+    """Coerce a raw BA_ / BA_DEF_DEF_ token to str/int/float, resolving ENUMs."""
+    text = text.strip()
+    if text.startswith('"') and text.endswith('"') and len(text) >= 2:
+        return text[1:-1]
+    try:
+        num: Union[int, float] = float(text) if ("." in text or "e" in text.lower()) else int(text)
+    except ValueError:
+        return text
+    if defn is not None and defn.value_type == "ENUM" and isinstance(num, int) and 0 <= num < len(defn.enum_values):
+        return defn.enum_values[num]
+    if defn is not None and defn.value_type == "FLOAT":
+        return float(num)
+    if defn is not None and defn.value_type in ("INT", "HEX"):
+        return int(num)
+    return num
+
+
+@dataclass
 class Signal:
     """One signal inside a DBC message."""
 
@@ -105,6 +165,7 @@ class Signal:
     multiplexer_ids: Optional[List[int]] = None
     values: Dict[int, str] = field(default_factory=dict)
     comment: str = ""
+    attributes: Dict[str, object] = field(default_factory=dict)
 
     @property
     def is_big_endian(self) -> bool:
@@ -169,6 +230,7 @@ class Signal:
             ),
             "values": self.values,
             "comment": self.comment,
+            "attributes": dict(self.attributes),
         }
 
 
@@ -187,6 +249,8 @@ class Message:
     sender: str = ""
     signals: List[Signal] = field(default_factory=list)
     comment: str = ""
+    attributes: Dict[str, object] = field(default_factory=dict)
+    signal_groups: List[SignalGroup] = field(default_factory=list)
 
     @property
     def is_extended(self) -> bool:
@@ -254,6 +318,8 @@ class Message:
             "sender": self.sender,
             "extended": self.is_extended,
             "comment": self.comment,
+            "attributes": dict(self.attributes),
+            "signal_groups": [g.name for g in self.signal_groups],
             "signals": [s.to_dict() for s in self.signals],
         }
 
@@ -264,6 +330,12 @@ class Database:
 
     messages: Dict[int, Message] = field(default_factory=dict)
     source: str = ""
+    attribute_defs: Dict[str, AttributeDef] = field(default_factory=dict)
+    attributes: List[Attribute] = field(default_factory=list)
+    node_attributes: Dict[str, Dict[str, object]] = field(default_factory=dict)
+    event_attributes: Dict[str, Dict[str, object]] = field(default_factory=dict)
+    network_attributes: Dict[str, object] = field(default_factory=dict)
+    signal_groups: List[SignalGroup] = field(default_factory=list)
 
     # -- lookup ------------------------------------------------------------- #
     def __len__(self) -> int:
@@ -300,6 +372,33 @@ class Database:
                 hits.append(m)
         return hits
 
+    # -- attributes and signal groups --------------------------------------- #
+    def attribute(
+        self,
+        name: str,
+        object_type: str = "",
+        object_id: Optional[int] = None,
+        signal_name: Optional[str] = None,
+        node: Optional[str] = None,
+    ) -> object:
+        """Resolved attribute value: the ``BA_`` assignment if any, else the default."""
+        for attr in self.attributes:
+            if (
+                attr.name == name
+                and attr.object_type == object_type
+                and attr.object_id == object_id
+                and attr.signal_name == signal_name
+                and attr.node == node
+            ):
+                return attr.value
+        defn = self.attribute_defs.get(name)
+        return defn.default if defn is not None else None
+
+    def groups_for_message(self, key: Union[int, str]) -> List[SignalGroup]:
+        """Signal groups declared on a message (by id or name)."""
+        frame_id = self.message(key).frame_id
+        return [g for g in self.signal_groups if g.message_id == frame_id]
+
     # -- data --------------------------------------------------------------- #
     def decode(self, frame_id: int, data: bytes, **kwargs) -> Dict[str, Union[float, int, str]]:
         return self.message(frame_id).decode(data, **kwargs)
@@ -312,6 +411,11 @@ class Database:
     def parse(cls, text: str, source: str = "") -> "Database":
         db = cls(source=source)
         current: Optional[Message] = None
+        # Attribute definitions, defaults and assignments may appear in any
+        # order, so assignments are collected raw and resolved after the loop.
+        pending: List[Attribute] = []
+        raw_defaults: Dict[str, str] = {}
+        groups: List[SignalGroup] = []
         for raw_line in text.splitlines():
             line = raw_line.strip()
             if not line or line.startswith("#"):
@@ -364,6 +468,77 @@ class Database:
                         s.comment = m.group(3)
                         break
                 continue
+
+            m = _RE_BA_DEF.match(line)
+            if m:
+                defn = AttributeDef(
+                    name=m.group(2),
+                    object_type=m.group(1) or "",
+                    value_type=m.group(3).upper(),
+                )
+                rest = m.group(4) or ""
+                if defn.value_type == "ENUM":
+                    defn.enum_values = re.findall(r"\"([^\"]*)\"", rest)
+                else:
+                    nums = re.findall(r"[-+0-9.eE]+", rest)
+                    if len(nums) >= 2:
+                        defn.minimum = float(nums[0])
+                        defn.maximum = float(nums[1])
+                db.attribute_defs[defn.name] = defn
+                continue
+
+            m = _RE_BA_DEF_DEF.match(line)
+            if m:
+                raw_defaults[m.group(1)] = m.group(2).strip()
+                continue
+
+            m = _RE_BA.match(line)
+            if m:
+                pending.append(_parse_ba(m.group(1), m.group(2).strip()))
+                continue
+
+            m = _RE_SIG_GROUP.match(line)
+            if m:
+                groups.append(
+                    SignalGroup(
+                        message_id=int(m.group(1)),
+                        name=m.group(2),
+                        repetitions=int(m.group(3)),
+                        signal_names=m.group(4).split(),
+                    )
+                )
+                continue
+
+        # -- resolve attributes -------------------------------------------- #
+        for name, raw_default in raw_defaults.items():
+            defn = db.attribute_defs.get(name)
+            if defn is not None:
+                defn.default = _attr_value(raw_default, defn)
+
+        for attr in pending:
+            defn = db.attribute_defs.get(attr.name)
+            value = _attr_value(str(attr.value), defn)
+            attr.value = value
+            db.attributes.append(attr)
+            if attr.object_type == "BO_" and attr.object_id in db.messages:
+                db.messages[attr.object_id].attributes[attr.name] = value
+            elif attr.object_type == "SG_" and attr.object_id in db.messages:
+                for s in db.messages[attr.object_id].signals:
+                    if s.name == attr.signal_name:
+                        s.attributes[attr.name] = value
+                        break
+            elif attr.object_type == "BU_" and attr.node:
+                db.node_attributes.setdefault(attr.node, {})[attr.name] = value
+            elif attr.object_type == "EV_" and attr.node:
+                db.event_attributes.setdefault(attr.node, {})[attr.name] = value
+            elif attr.object_type == "":
+                db.network_attributes[attr.name] = value
+
+        for group in groups:
+            db.signal_groups.append(group)
+            target = db.messages.get(group.message_id)
+            if target is not None:
+                target.signal_groups.append(group)
         return db
 
     def summary(self) -> List[Dict[str, object]]:
@@ -377,6 +552,26 @@ class Database:
             }
             for m in sorted(self.messages.values(), key=lambda x: x.frame_id)
         ]
+
+
+def _parse_ba(name: str, rest: str) -> Attribute:
+    """Split the object reference part of one ``BA_`` assignment."""
+    rest = rest.strip()
+    m = re.match(r"BO_\s+(\d+)\s+(.*)$", rest, re.DOTALL)
+    if m:
+        return Attribute(name=name, object_type="BO_", object_id=int(m.group(1)), value=m.group(2).strip())
+    m = re.match(r"SG_\s+(\d+)\s+(\S+)\s+(.*)$", rest, re.DOTALL)
+    if m:
+        return Attribute(
+            name=name, object_type="SG_", object_id=int(m.group(1)), signal_name=m.group(2), value=m.group(3).strip()
+        )
+    m = re.match(r"BU_\s+(\S+)\s+(.*)$", rest, re.DOTALL)
+    if m:
+        return Attribute(name=name, object_type="BU_", node=m.group(1), value=m.group(2).strip())
+    m = re.match(r"EV_\s+(\S+)\s+(.*)$", rest, re.DOTALL)
+    if m:
+        return Attribute(name=name, object_type="EV_", node=m.group(1), value=m.group(2).strip())
+    return Attribute(name=name, object_type="", value=rest)
 
 
 def _signal_from_match(m: "re.Match[str]") -> Optional[Signal]:

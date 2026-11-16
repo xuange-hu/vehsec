@@ -228,3 +228,132 @@ def test_summary_is_json_serialisable(db):
     import json
 
     assert json.loads(json.dumps(db.summary()))[0]["id"] == "0x100"
+
+
+# --------------------------------------------------------------------------- #
+# attributes (BA_DEF_ / BA_DEF_DEF_ / BA_) and signal groups (SIG_GROUP_)
+# --------------------------------------------------------------------------- #
+ATTR_DBC = """
+BO_ 260 EngineData: 8 ECM
+ SG_ RPM : 0|16@1+ (1,0) [0|8000] "rpm" TCM
+ SG_ Temp : 16|8@1+ (1,-40) [-40|215] "degC" TCM
+
+BA_DEF_ BO_ "MsgCycleTime" INT 0 10000;
+BA_DEF_ SG_ "GenSigStartValue" FLOAT 0 100000;
+BA_DEF_ SG_ "GenSigSendType" ENUM "Cyclic","OnWrite","OnChange";
+BA_DEF_ BU_ "NodeLayer" STRING;
+BA_DEF_ "DBName" STRING;
+BA_DEF_DEF_ "MsgCycleTime" 100;
+BA_DEF_DEF_ "GenSigStartValue" 0;
+BA_DEF_DEF_ "GenSigSendType" 0;
+BA_DEF_DEF_ "DBName" "unnamed";
+BA_ "MsgCycleTime" BO_ 260 20;
+BA_ "GenSigStartValue" SG_ 260 RPM 800;
+BA_ "GenSigSendType" SG_ 260 Temp 2;
+BA_ "NodeLayer" BU_ ECM "ASAM-OFFSET";
+BA_ "DBName" "Powertrain";
+SIG_GROUP_ 260 PowerGroup 1 : RPM Temp;
+"""
+
+
+@pytest.fixture(scope="module")
+def adb():
+    return dbc.Database.parse(ATTR_DBC)
+
+
+def test_ba_def_ranges(adb):
+    cycle = adb.attribute_defs["MsgCycleTime"]
+    assert cycle.value_type == "INT" and cycle.minimum == 0 and cycle.maximum == 10000
+    assert cycle.object_type == "BO_"
+
+
+def test_ba_def_enum_values(adb):
+    send = adb.attribute_defs["GenSigSendType"]
+    assert send.value_type == "ENUM"
+    assert send.enum_values == ["Cyclic", "OnWrite", "OnChange"]
+
+
+def test_ba_def_string_has_no_range(adb):
+    name = adb.attribute_defs["DBName"]
+    assert name.value_type == "STRING" and name.minimum is None and name.maximum is None
+
+
+def test_ba_assignment_on_message(adb):
+    assert adb.message(260).attributes["MsgCycleTime"] == 20
+    assert adb.attribute("MsgCycleTime", "BO_", 260) == 20
+
+
+def test_ba_assignment_on_signal(adb):
+    rpm = adb.message(260).signal("RPM")
+    assert rpm.attributes["GenSigStartValue"] == 800.0
+    assert isinstance(rpm.attributes["GenSigStartValue"], float)
+
+
+def test_ba_enum_index_resolved_to_name(adb):
+    temp = adb.message(260).signal("Temp")
+    assert temp.attributes["GenSigSendType"] == "OnChange"
+
+
+def test_ba_assignment_on_node_and_network(adb):
+    assert adb.node_attributes["ECM"]["NodeLayer"] == "ASAM-OFFSET"
+    assert adb.network_attributes["DBName"] == "Powertrain"
+
+
+def test_attribute_falls_back_to_default(adb):
+    # No BA_ assignment for MsgCycleTime on message 0x42 -> BA_DEF_DEF_ value.
+    assert adb.attribute("MsgCycleTime", "BO_", 0x42) == 100
+    assert adb.attribute("GenSigSendType", "SG_", 260, "RPM") == "Cyclic"
+
+
+def test_attribute_unknown_returns_none(adb):
+    assert adb.attribute("NoSuchAttribute") is None
+
+
+def test_ba_assignment_before_definition_is_order_independent():
+    text = (
+        'BA_ "MsgCycleTime" BO_ 260 20;\n'
+        'BA_DEF_ BO_ "MsgCycleTime" INT 0 10000;\n'
+        "BO_ 260 EngineData: 8 ECM\n"
+    )
+    parsed = dbc.Database.parse(text)
+    assert parsed.message(260).attributes["MsgCycleTime"] == 20
+
+
+def test_ba_int_and_hex_coercion():
+    text = (
+        'BA_DEF_ "Flags" HEX 0 255;\nBA_DEF_ "Count" INT 0 9;\n'
+        'BA_ "Flags" 12;\nBA_ "Count" 3;\n'
+    )
+    parsed = dbc.Database.parse(text)
+    assert parsed.network_attributes == {"Flags": 12, "Count": 3}
+
+
+def test_unassigned_definition_is_kept(adb):
+    text = ATTR_DBC + 'BA_DEF_ SG_ "Unused" INT 0 1;\n'
+    parsed = dbc.Database.parse(text)
+    assert parsed.attribute_defs["Unused"].value_type == "INT"
+    assert parsed.attribute("Unused") is None
+
+
+def test_sig_group_parsing(adb):
+    groups = adb.groups_for_message(260)
+    assert len(groups) == 1
+    group = groups[0]
+    assert group.name == "PowerGroup" and group.repetitions == 1
+    assert group.signal_names == ["RPM", "Temp"]
+
+
+def test_sig_group_attaches_to_message(adb):
+    msg = adb.message(260)
+    assert [g.name for g in msg.signal_groups] == ["PowerGroup"]
+    assert msg.to_dict()["signal_groups"] == ["PowerGroup"]
+
+
+def test_sig_group_resolves_by_name(adb):
+    assert adb.groups_for_message("EngineData")[0].name == "PowerGroup"
+
+
+def test_sig_group_on_unknown_message_is_kept():
+    parsed = dbc.Database.parse("SIG_GROUP_ 999 Orphans 1 : A B;\n")
+    assert parsed.signal_groups[0].message_id == 999
+    assert parsed.signal_groups[0].signal_names == ["A", "B"]

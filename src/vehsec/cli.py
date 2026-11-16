@@ -563,6 +563,47 @@ def dbc_info(file):
     for m in database:
         t.add_row(f"0x{m.frame_id:X}", m.name, str(m.length), str(len(m.signals)))
     console.print(t)
+    if database.attribute_defs or database.signal_groups:
+        console.print(
+            f"[dim]{len(database.attribute_defs)} attribute definition(s), "
+            f"{len(database.attributes)} assignment(s), "
+            f"{len(database.signal_groups)} signal group(s)[/dim]"
+        )
+
+
+@dbc.command("attrs")
+@click.option("--file", required=True, help="path to .dbc")
+@click.option("--id", "msg_id", default=None, help="only attributes on this frame id, e.g. 0x1A4")
+def dbc_attrs(file, msg_id):
+    """List BA_ attribute definitions and assignments."""
+    from . import dbc as db
+
+    database = db.parse_file(file)
+    frame_id = None
+    if msg_id:
+        frame_id = int(msg_id, 16) if msg_id.lower().startswith("0x") else int(msg_id)
+
+    t = Table(title=f"{file} — attributes")
+    t.add_column("name"); t.add_column("on"); t.add_column("value")
+    rows = []
+    for attr in database.attributes:
+        if frame_id is not None and attr.object_id != frame_id:
+            continue
+        if attr.object_type == "SG_":
+            target = f"SG {attr.object_id:X}:{attr.signal_name}"
+        elif attr.object_type == "BO_":
+            target = f"BO 0x{attr.object_id:X}"
+        elif attr.object_type in ("BU_", "EV_"):
+            target = f"{attr.object_type} {attr.node}"
+        else:
+            target = "(network)"
+        rows.append((attr.name, target, repr(attr.value)))
+    for name, target, value in rows:
+        t.add_row(name, target, value)
+    console.print(t)
+    for name, defn in sorted(database.attribute_defs.items()):
+        if name not in {a.name for a in database.attributes}:
+            console.print(f"[dim]{name}: defined ({defn.value_type}) but never assigned, default={defn.default!r}[/dim]")
 
 
 @dbc.command("decode")
