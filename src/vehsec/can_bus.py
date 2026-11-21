@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import random
+import sys
 from dataclasses import dataclass, field
 from typing import Iterable, Iterator, Optional
 
@@ -163,20 +164,105 @@ def analyze(frames: Iterable[Frame]) -> dict:
     return out
 
 
-def parse_candump(path: str) -> list[Frame]:
-    """Parse a ``candump -l`` style log (``(t) iface ID#DATA``) into frames."""
+def parse_candump_report(path: str) -> tuple[list["Frame"], list[str]]:
+    """Parse a ``candump -l`` log, returning ``(frames, skipped_reasons)``.
+
+    Supported shapes, all of which appear in real ``candump`` output:
+
+        123#1122334455667788            classic, 11-bit id
+        1FDBFFF4x#DEADBEEF              extended, 29-bit id (note the ``x``)
+        123##1CC1122...                 CAN FD, ``##`` then flags byte
+        123#R                           remote frame, no payload
+
+    The previous version did ``int(cid_str, 16)`` on the whole token and
+    dropped anything it could not parse with a bare ``except ValueError``.
+    That silently discarded **every extended frame and every CAN FD frame**:
+    a 5-frame log came back as 2 frames, with no warning at all. For a tool
+    whose job is replaying and analysing bus traffic, dropping frames is worse
+    than a hard error — a replay with holes looks like a working replay.
+    """
     frames: list[Frame] = []
+    skipped: list[str] = []
     with open(path, "r", encoding="utf-8", errors="ignore") as fh:
-        for line in fh:
-            line = line.strip()
-            if "#" not in line:
+        for lineno, raw in enumerate(fh, start=1):
+            line = raw.strip()
+            if not line or line.startswith("#") or "#" not in line:
                 continue
+            # candump formats: "(ts) iface ID#DATA" or "iface ID#DATA".
+            token = line.split()[-1]
             try:
-                token = line.split()[-1] if " " in line else line
-                cid_str, data_str = token.split("#")
-                cid = int(cid_str, 16)
-                data = bytes.fromhex(data_str.replace("##", ""))
-                frames.append(Frame(cid, data))
-            except ValueError:
-                continue
+                frames.append(_frame_from_token(token))
+            except ValueError as exc:
+                skipped.append(f"line {lineno}: {exc}: {line}")
+    return frames, skipped
+
+
+def _frame_from_token(token: str) -> "Frame":
+    """One ``ID#DATA`` token → Frame. Raises ValueError with a usable reason."""
+    if "#" not in token:
+        raise ValueError("no '#' separator")
+    id_part, _, payload = token.partition("#")
+
+    is_extended = id_part.endswith("x") or id_part.endswith("X")
+    if is_extended:
+        id_part = id_part[:-1]
+
+    try:
+        cid = int(id_part, 16)
+    except ValueError:
+        raise ValueError(f"arbitration id {id_part!r} is not hex") from None
+
+    if cid < 0 or cid > 0x1FFFFFFF:
+        raise ValueError(f"arbitration id 0x{cid:X} is outside 29 bits")
+
+    # 11-bit ids never carry the 'x' suffix; anything above 0x7FF is extended
+    # whether or not the writer marked it, because that is how the bus works.
+    if cid > 0x7FF:
+        is_extended = True
+    if not is_extended and cid > 0x7FF:
+        raise ValueError(f"11-bit frame claims id 0x{cid:X}")
+
+    if payload.startswith("R") or payload.startswith("r"):
+        # Remote frames carry no data; a zero-length frame is the honest shape.
+        return Frame(cid, b"", is_extended_id=is_extended)
+
+    is_fd = payload.startswith("#")
+    if is_fd:
+        # "##<flags><data>": the first byte after '##' is the FD flags byte.
+        body = payload[1:]
+        if len(body) < 2:
+            raise ValueError("CAN FD frame is missing its flags byte")
+        payload = body[1:]
+
+    try:
+        data = bytes.fromhex(payload)
+    except ValueError:
+        raise ValueError(f"payload {payload!r} is not valid hex") from None
+
+    if not is_fd and len(data) > 8:
+        # candump 在两个写法上都出现过：`ID##<flags><data>` 是显式 FD，
+        # 而扩展帧直接写 12/24/64 字节也常见（socketcan 的 fd 帧省略了 flags）。
+        # 判据看长度本身：经典 CAN 物理上不可能超过 8 字节，超了就是 FD。
+        if is_extended:
+            is_fd = True
+        else:
+            raise ValueError(f"classic CAN frame carries {len(data)} bytes (max 8)")
+
+    return Frame(cid, data, is_extended_id=is_extended)
+
+
+def parse_candump(path: str) -> list[Frame]:
+    """Parse a ``candump`` log into frames.
+
+    Malformed lines are reported on stderr instead of being swallowed: a
+    replay that quietly loses frames is indistinguishable from a successful
+    one, which is the failure mode this whole parser exists to avoid.
+    """
+    frames, skipped = parse_candump_report(path)
+    if skipped:
+        sample = "\n  ".join(skipped[:5])
+        more = f"\n  ... and {len(skipped) - 5} more" if len(skipped) > 5 else ""
+        sys.stderr.write(
+            f"vehsec: skipped {len(skipped)} unparseable candump line(s):\n  {sample}{more}\n"
+        )
     return frames
