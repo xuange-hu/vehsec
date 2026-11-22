@@ -75,6 +75,13 @@ def _bit_positions(start: int, length: int, big_endian: bool) -> List[int]:
 
     LSB index 0 = bit 0 of byte 0 (least significant). The returned list is in
     signal order, so the first entry is the signal's MSB.
+
+    For Motorola (``@0``) the DBC ``start`` bit is the signal's MSB under the
+    sawtooth numbering (bit 0 of byte 0 is the frame's most significant bit),
+    so a DBC bit number ``N`` maps to LSB index ``(N // 8) * 8 + (7 - N % 8)``.
+    Consequently ``0|16@0+`` is a plain big-endian 16-bit value in bytes 0-1,
+    while ``7|16@0+`` starts at the *least* significant bit of byte 0 and
+    legitimately needs a third byte.
     """
     positions: List[int] = []
     if big_endian:

@@ -215,6 +215,49 @@ def test_motorola_byte2_start():
     assert bits[0] == 23 and bits[8] == 31
 
 
+def test_motorola_start_bit_matches_cantools_oracle():
+    """Pin the sawtooth mapping against cantools' reference implementation.
+
+    cantools' ``start_bit()`` (src/cantools/database/utils.py) is literally
+    ``8 * (start // 8) + (7 - start % 8)`` for big_endian signals, and
+    ``start`` unchanged for little-endian ones. A 2026-11-18 audit reported
+    this mapping as "mirrored" and a CRITICAL on the strength of a hand-computed
+    expectation; the oracle above says the shipped mapping is correct. Keeping
+    the oracle in-tree stops that false positive from being "fixed" later.
+    """
+    from vehsec.dbc import _bit_positions
+
+    for start in (0, 3, 7, 8, 16, 23, 32):
+        oracle = 8 * (start // 8) + (7 - start % 8)
+        assert _bit_positions(start, 1, big_endian=True)[0] == oracle
+        assert _bit_positions(start, 1, big_endian=False)[0] == start
+
+
+def test_motorola_zero_start_is_plain_big_endian():
+    """``0|16@0+`` must be the big-endian integer in bytes 0-1."""
+    from vehsec.dbc import Signal
+
+    sig = Signal(name="be", start=0, length=16, byte_order="big_endian", is_signed=False)
+    assert sig.raw_value(b"\x12\x3c") == 0x123C
+    assert sig.raw_value(b"\xff\xfe") == 0xFFFE
+
+
+def test_motorola_msb_anchored_seven_needs_third_byte():
+    """``7|16@0+`` legitimately walks into byte 2 — that is not a bug.
+
+    With the sawtooth numbering, start bit 7 is the *least* significant bit of
+    byte 0, so a 16-bit Motorola signal from there ends in the MSB of byte 2.
+    """
+    from vehsec.dbc import DecodeError, Signal
+
+    sig = Signal(name="be7", start=7, length=16, byte_order="big_endian", is_signed=False)
+    with pytest.raises(DecodeError):
+        sig.raw_value(b"\x12\x3c")
+    # One more byte and the signal resolves: byte0 bit0, then byte1 MSB-first,
+    # then byte2 bits 7..1 — i.e. 0b0_00111100_0000000 == 0x1E00.
+    assert sig.raw_value(b"\x12\x3c\x00") == 0x1E00
+
+
 def test_full_byte_is_endianness_agnostic():
     from vehsec.dbc import Signal
 
