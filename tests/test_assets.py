@@ -68,3 +68,90 @@ def test_social_preview_renderer(tmp_path):
     from PIL import Image
 
     assert Image.open(out).size == (1280, 640)
+
+
+# --------------------------------------------------------------------------- #
+# curated list structure (awesome-vehicle-security.md)
+# --------------------------------------------------------------------------- #
+AWESOME = ROOT / "awesome-vehicle-security.md"
+
+
+def test_awesome_list_anchor_links_resolve():
+    """Every ``- [name](#anchor)`` in Contents must match a real heading.
+
+    The list shipped with a Contents block that had drifted from the headings,
+    so two anchors scrolled nowhere.
+    """
+    import re
+
+    text = AWESOME.read_text(encoding="utf-8")
+    headings = {
+        re.sub(r"[^a-z0-9 -]", "", h.lower()).replace(" ", "-").strip("-")
+        for h in re.findall(r"^##+ (.+)$", text, re.MULTILINE)
+    }
+    anchors = re.findall(r"^- \[[^\]]+\]\(#([^)]+)\)$", text, re.MULTILINE)
+    assert anchors, "Contents block is missing"
+    missing = [a for a in anchors if a not in headings]
+    assert not missing, f"anchors with no heading: {missing}"
+
+
+def test_awesome_list_sections_are_not_empty():
+    """A section heading with no entries reads as an abandoned project."""
+    import re
+
+    text = AWESOME.read_text(encoding="utf-8")
+    sections = re.split(r"^## ", text, flags=re.MULTILINE)[1:]
+    thin = []
+    for block in sections:
+        title, _, body = block.partition("\n")
+        entries = [ln for ln in body.splitlines() if ln.startswith("- ")]
+        if len(entries) < 3:
+            thin.append((title.strip(), len(entries)))
+    assert not thin, f"sections with fewer than 3 entries: {thin}"
+
+
+def test_awesome_list_entries_have_descriptions():
+    """Every entry follows ``- [name](url) — description``.
+
+    The optional ``(★)`` popularity marker sits between the link and the dash,
+    and in-repo entries use relative paths, so both shapes are allowed.
+    """
+    import re
+
+    text = AWESOME.read_text(encoding="utf-8")
+    bad = []
+    for line in text.splitlines():
+        if not line.startswith("- [") or "](#" in line:
+            continue
+        link = r"\[[^\]]+\]\((?:https?://|labs/)[^)]*\)"
+        if not re.match(rf"^- {link}(\s+\([^)]*★[^)]*\))?\s+—\s+\S", line):
+            bad.append(line[:90])
+    assert not bad, f"entries without a description: {bad}"
+
+
+def test_awesome_list_has_no_dead_placeholders():
+    """Catch the failure mode that actually bit: entries whose repo was deleted.
+
+    The first draft carried ``EFeru/ICSim-docker``, ``IDontThinkLlama/ecu-toolkit``
+    and ``uPwnLab/ecu-toolkit`` — three 404s, two of them belonging to accounts
+    that no longer exist. Network checks live in ``scripts/check_links.py``
+    (run by hand, since CI has no egress guarantees), so what can be pinned
+    offline is the shape of the links themselves.
+    """
+    import re
+
+    text = AWESOME.read_text(encoding="utf-8")
+    urls = re.findall(r"\]\((https?://[^)]+)\)", text)
+    for url in urls:
+        assert " " not in url, f"URL contains a space: {url!r}"
+        assert url.count("(") == url.count(")"), f"unbalanced parens in {url!r}"
+    # A bare GitHub profile link is a smell: it usually replaced a dead repo.
+    profiles = [u for u in urls if re.fullmatch(r"https://github\.com/[^/]+/?", u)]
+    assert not profiles, f"entry points at a bare profile: {profiles}"
+
+
+def test_awesome_list_covers_the_run_entry_point():
+    """The list is a discovery surface for the toolkit; keep the link alive."""
+    text = AWESOME.read_text(encoding="utf-8")
+    assert "xuange-hu/vehsec" in text
+    assert "labs/" in text
